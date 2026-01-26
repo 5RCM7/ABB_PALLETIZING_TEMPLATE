@@ -1,0 +1,520 @@
+MODULE FileHandling(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.006                                                              **
+    !** Date:    07-05-2025                                                            **
+    !**                                                                                **
+    !** Module:  FileHandling                                                          **
+    !**                                                                                **
+    !************************************************************************************
+
+    RECORD fileparameterdata
+        string Param;
+        string Name;
+        string ValueStr;
+        num ValueNum;
+        dnum ValueDnum;
+        bool ValueBool;
+    ENDRECORD
+
+    LOCAL VAR num BoxNr:=1;
+    LOCAL VAR num OldCorner:=0;
+
+    PROC OpenRecipe(\string Path,string FileName)
+        VAR num ParamCnt;
+        VAR num FileType;
+        CONST num RECIPE_FILE:=1;
+        CONST num TUNE_FILE:=2;
+        !
+        VAR string ParamLine{2};
+        VAR string FName;
+        VAR string FilePath:="HOME:/Palletizing_Files/Recipes/";
+        !
+        VAR fileparameterdata Params{20};
+        !
+        VAR iodev DataFile;
+
+        IF Present(Path) FilePath:=Path+"/";
+
+        FOR i FROM RECIPE_FILE TO TUNE_FILE DO
+            FileType:=i;
+            ParamLine:=["",""];
+
+            TEST FileType
+            CASE RECIPE_FILE:
+                FName:=FileName+".lpproj";
+            CASE TUNE_FILE:
+                FName:=FileName+".lptune";
+            ENDTEST
+
+            Close DataFile;
+            Open FilePath\File:=FName,DataFile\Read;
+            WHILE ParamLine{1}<>"EOF" DO
+                ReadDStr DataFile,ParamLine;
+
+                IF ParamLine{1}<>"" AND ParamLine{1}<>"EOF" AND StrFind(ParamLine{1},1,"#")<>1 THEN
+
+                    GetParams ParamLine,Params;
+
+                    ParamCnt:=0;
+                    WHILE Params{ParamCnt+1}.Param<>"" DO
+                        Incr ParamCnt;
+                        Params{ParamCnt}:=SeparateParams(Params{ParamCnt}.Param);
+                    ENDWHILE
+
+                    WriteParamsToVars Params,ParamCnt;
+                ENDIF
+            ENDWHILE
+
+            Close DataFile;
+
+            TEST FileType
+            CASE RECIPE_FILE:
+                InitRecipe;
+
+                ! Workrange check
+                IF WorkrangeCheckMode VerifyWorkrange;
+            CASE TUNE_FILE:
+                UpdateMotionParams;
+            ENDTEST
+        ENDFOR
+    ERROR
+        TEST ERRNO
+        CASE ERR_FILEOPEN:
+            SkipWarn;
+
+            TEST FileType
+            CASE RECIPE_FILE:
+                PalletStatus:=[PALLET_FULL,PALLET_FULL,PALLET_FULL,PALLET_FULL];
+                ErrWrite FileHandling_Txt_C1,FileHandling_Txt_C2+FileName+FileHandling_Txt_C3\RL2:=FileHandling_Txt_C4;
+                Stop;
+                ExitCycle;
+            CASE TUNE_FILE:
+                SetDefaultParams;
+            ENDTEST
+            RETURN ;
+        ENDTEST
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDPROC
+
+    LOCAL PROC WriteParamsToVars(fileparameterdata ParamList{*},num NoOfParams)
+        VAR num WordCnt:=3;
+
+        TEST ParamList{1}.Name
+        CASE "GripType":
+            GripType:=ParamList{1}.ValueNum;
+        CASE "GripWidth":
+            GripWidth:=ParamList{1}.ValueNum;
+        CASE "AvailPickPos":
+            AvailPickPos{ParamList{1}.ValueNum+1}:=ParamList{2}.ValueNum;
+        CASE "BoxDim":
+            FOR i FROM 2 TO NoOfParams DO
+                TEST ParamList{i}.Name
+                CASE "Length":
+                    Box.Length:=ParamList{i}.ValueNum;
+                CASE "Width":
+                    Box.Width:=ParamList{i}.ValueNum;
+                CASE "Height":
+                    Box.Height:=ParamList{i}.ValueNum;
+                CASE "Weight":
+                    Box.Weight:=ParamList{i}.ValueNum;
+                CASE "LongSideLead":
+                    Box.LongSideLead:=ParamList{i}.ValueNum;
+                CASE "ShortSideLead":
+                    Box.ShortSideLead:=ParamList{i}.ValueNum;
+                DEFAULT:
+                    ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{i}.Name\RL2:=FileHandling_Txt_A4;
+                ENDTEST
+            ENDFOR
+        CASE "PalletDim":
+            FOR i FROM 2 TO NoOfParams DO
+                TEST ParamList{i}.Name
+                CASE "Length":
+                    Pallet.Length:=ParamList{i}.ValueNum;
+                CASE "Width":
+                    Pallet.Width:=ParamList{i}.ValueNum;
+                CASE "Height":
+                    Pallet.Height:=ParamList{i}.ValueNum;
+                DEFAULT:
+                    ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{i}.Name\RL2:=FileHandling_Txt_A4;
+                ENDTEST
+            ENDFOR
+        CASE "LabelPos":
+            TEST ParamList{2}.Name
+            CASE "Present":
+                TEST ParamList{1}.ValueNum
+                CASE 0:
+                    Box.LabelPos0:=ParamList{2}.ValueBool;
+                CASE 1:
+                    Box.LabelPos1:=ParamList{2}.ValueBool;
+                CASE 2:
+                    Box.LabelPos2:=ParamList{2}.ValueBool;
+                CASE 3:
+                    Box.LabelPos3:=ParamList{2}.ValueBool;
+                DEFAULT:
+                    ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{1}.Name\RL2:=FileHandling_Txt_A4;
+                ENDTEST
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "NumberOfLayers":
+            Pallet.NrOfLayers:=ParamList{1}.ValueNum;
+        CASE "MaxStackHeight":
+            Pallet.MaxHeight:=ParamList{1}.ValueNum;
+        CASE "LayerCfg":
+            TEST ParamList{2}.Name
+            CASE "Name":
+                StackConfig{ParamList{1}.ValueNum+1}.Name:=GetParName(ParamList,NoOfParams);
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "SlipSheet":
+            TEST ParamList{2}.Name
+            CASE "Layer":
+                StackConfig{ParamList{2}.ValueNum+1}.Slipsheet:=TRUE;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "SlipSheetDim":
+            TEST ParamList{2}.Name
+            CASE "Length":
+                Slipsheet.Length:=ParamList{2}.ValueNum;
+            CASE "Width":
+                Slipsheet.Width:=ParamList{2}.ValueNum;
+            CASE "Thickness":
+                Slipsheet.Thickness:=ParamList{2}.ValueNum;
+            CASE "StackHeight":
+                Slipsheet.StackHeight:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "PRef":
+            TEST ParamList{2}.Name
+            CASE "Corner","Cor":
+                IF ParamList{2}.ValueNum<>OldCorner BoxNr:=1;
+                OldCorner:=ParamList{2}.ValueNum;
+
+                ! Change the individual items
+                FOR i FROM 3 TO NoOfParams DO
+                    TEST ParamList{i}.Name
+                    CASE "Form","F":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.Formula:=AnalyzeFormula(ParamList{i}.ValueStr);
+                    CASE "PiOri","PiO":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.PickOrient:=ParamList{i}.ValueNum;
+                    CASE "PlOri","PlO":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.PlaceOrient:=ParamList{i}.ValueNum;
+                    CASE "LblOri","LblO":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.LabelOrient:=ParamList{i}.ValueNum;
+                    CASE "Appr":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.ApproachDir:=ParamList{i}.ValueNum;
+                    CASE "ID":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.ID:=ParamList{i}.ValueNum;
+                    CASE "Par":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.Parent:=ParamList{i}.ValueNum;
+                    CASE "LT":
+                        Pattern{ParamList{1}.ValueNum+1,ParamList{2}.ValueNum,BoxNr}.LinkedType:=ParamList{i}.ValueNum;
+                    DEFAULT:
+                        ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{i}.Name\RL2:=FileHandling_Txt_A4;
+                    ENDTEST
+                ENDFOR
+
+                Incr BoxNr;
+            CASE "Name":
+                LayerName{ParamList{1}.ValueNum+1}:=GetParName(ParamList,NoOfParams);
+                OldCorner:=0;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A1,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "PickOffs":
+            TEST ParamList{2}.Name
+            CASE "X":
+                XOffsPick:=ParamList{2}.ValueNum;
+            CASE "Y":
+                YOffsPick:=ParamList{2}.ValueNum;
+            CASE "Z":
+                ZOffsPick:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A2,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "BoxOffs":
+            TEST ParamList{2}.Name
+            CASE "Length":
+                OffsBoxLength:=ParamList{2}.ValueNum;
+            CASE "Width":
+                OffsBoxWidth:=ParamList{2}.ValueNum;
+            CASE "Height":
+                OffsBoxHeight:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A2,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "Speed":
+            TEST ParamList{2}.Name
+            CASE "PickSpeed":
+                PickSpeed:=ParamList{2}.ValueNum;
+            CASE "PalletSpeed":
+                PalletSpeed:=ParamList{2}.ValueNum;
+            CASE "PlaceSpeed":
+                PlaceSpeed:=ParamList{2}.ValueNum;
+            CASE "ReturnSpeed":
+                ReturnSpeed:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A2,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "Acceleration":
+            TEST ParamList{2}.Name
+            CASE "Acc":
+                Acceleration:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A2,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        CASE "Timing":
+            TEST ParamList{2}.Name
+            CASE "PickTime":
+                PickTime:=ParamList{2}.ValueNum;
+            CASE "PlaceTime":
+                PlaceTime:=ParamList{2}.ValueNum;
+            DEFAULT:
+                ErrWrite FileHandling_Txt_A2,FileHandling_Txt_A3+ParamList{2}.Name\RL2:=FileHandling_Txt_A4;
+            ENDTEST
+        DEFAULT:
+            ErrWrite FileHandling_Txt_B1,FileHandling_Txt_B2+ParamList{1}.Name+FileHandling_Txt_B3\RL2:=FileHandling_Txt_B4;
+        ENDTEST
+    ENDPROC
+
+    FUNC string GetParName(fileparameterdata ParamList{*},num NoOfParams)
+        VAR string NameStr;
+
+        IF NoOfParams<3 RETURN ParamList{2}.ValueStr;
+
+        NameStr:=ParamList{2}.ValueStr;
+        FOR i FROM 3 TO NoOfParams DO
+            NameStr:=NameStr+" "+ParamList{i}.Name;
+        ENDFOR
+        RETURN NameStr;
+    ENDFUNC
+
+    LOCAL FUNC formuladata AnalyzeFormula(string FormulaStr)
+        VAR formuladata Formula;
+        !
+        VAR num StartPos:=3;
+        VAR num EndPos:=1;
+        VAR num Value;
+        !
+        VAR string XFormula;
+        VAR string YFormula;
+        VAR string Group;
+
+        Formula.Formula:=FormulaStr;
+
+        ! Get the orientation. This is allways the character
+        Formula.BoxOrient:=StrPart_(FormulaStr,1,1);
+
+        ! Get the X formula
+        EndPos:=StrFind(FormulaStr,3,";");
+        XFormula:=StrPart_(FormulaStr,3,EndPos-3);
+        GetPosFormula XFormula,Formula.XCalcL,Formula.XCalcW;
+
+        ! Get the X formula
+        StartPos:=EndPos+1;
+        EndPos:=StrFind(FormulaStr,StartPos,";");
+        YFormula:=StrPart_(FormulaStr,StartPos,EndPos-StartPos);
+        GetPosFormula YFormula,Formula.YCalcL,Formula.YCalcW;
+
+        ! Get the group
+        Group:=StrPart_(FormulaStr,EndPos+1,StrLen(FormulaStr)-EndPos);
+        IF StrToVal(Group,Value) Formula.Group:=Value;
+
+        RETURN Formula;
+    ENDFUNC
+
+    LOCAL PROC GetPosFormula(string FormulaStr,INOUT num ValueL,INOUT num ValueW)
+        VAR num OperatorPos:=0;
+        VAR num Value;
+        VAR num Operator:=0;
+        !
+        VAR string LeftFormula;
+        VAR string RightFormula;
+        VAR string Char;
+
+        OperatorPos:=StrFind(FormulaStr,2,"+");
+        IF OperatorPos<StrLen(FormulaStr) THEN
+            Operator:=1;
+        ELSE
+            OperatorPos:=StrFind(FormulaStr,2,"-");
+            IF OperatorPos<StrLen(FormulaStr) THEN
+                Operator:=-1;
+            ELSE
+                LeftFormula:=FormulaStr;
+            ENDIF
+        ENDIF
+
+        IF Operator<>0 THEN
+            LeftFormula:=StrPart_(FormulaStr,1,OperatorPos-1);
+            RightFormula:=StrPart_(FormulaStr,OperatorPos+1,StrLen(FormulaStr)-OperatorPos);
+        ENDIF
+
+        IF LeftFormula="" RETURN ;
+
+        IF StrFind(LeftFormula,1,"lL")<=StrLen(LeftFormula) THEN
+            ValueL:=1;
+            IF StrToVal(StrPart_(LeftFormula,1,StrLen(LeftFormula)-1),Value) ValueL:=Value;
+        ELSE
+            ValueW:=1;
+            IF StrToVal(StrPart_(LeftFormula,1,StrLen(LeftFormula)-1),Value) ValueW:=Value;
+        ENDIF
+
+        IF RightFormula="" RETURN ;
+
+        IF StrFind(RightFormula,1,"lL")<=StrLen(RightFormula) THEN
+            ValueL:=Operator;
+            IF StrToVal(StrPart_(RightFormula,1,StrLen(RightFormula)-1),Value) ValueL:=Value*Operator;
+        ELSE
+            ValueW:=Operator;
+            IF StrToVal(StrPart_(RightFormula,1,StrLen(RightFormula)-1),Value) ValueW:=Value*Operator;
+        ENDIF
+    ENDPROC
+
+    LOCAL PROC SetDefaultParams()
+        XOffsPick:=0;
+        YOffsPick:=0;
+        ZOffsPick:=0;
+
+        OffsBoxLength:=0;
+        OffsBoxWidth:=0;
+        OffsBoxHeight:=0;
+
+        PickSpeed:=1500;
+        PalletSpeed:=2000;
+        PlaceSpeed:=1500;
+        ReturnSpeed:=2000;
+
+        Acceleration:=100;
+
+        PickTime:=0.2;
+        PlaceTime:=0.2;
+    ENDPROC
+
+    ! Procedure GetParams
+    ! Parses the parameters into individual parameter sets, with a spac as delimiter
+    ! Parameter lines can be split into multiple lines (if longer that 80 characters, variable length array).
+    ! Parsed parameters are returned in an array with variable length.
+    !
+    LOCAL PROC GetParams(string ParamLine{*},INOUT fileparameterdata ParamList{*})
+        VAR num StartPos;
+        VAR num EndPos;
+        VAR num ParamCnt:=1;
+        !
+        VAR bool Finished:=FALSE;
+
+        FOR i FROM 1 TO Dim(ParamLine,1) DO
+            Finished:=FALSE;
+            StartPos:=1;
+
+            WHILE (NOT Finished) AND ParamLine{i}<>"" DO
+
+                EndPos:=StrFind(ParamLine{i},StartPos," ");
+
+                IF EndPos>StrLen(ParamLine{i}) Finished:=TRUE;
+
+                ParamList{ParamCnt}.Param:=StrPart_(ParamLine{i},StartPos,EndPos-StartPos);
+
+                StartPos:=EndPos+1;
+                Incr ParamCnt;
+            ENDWHILE
+        ENDFOR
+
+        ! Clear remaining parameters
+        FOR i FROM ParamCnt TO Dim(ParamList,1) DO
+            ParamList{i}.Param:="";
+        ENDFOR
+    ENDPROC
+
+    LOCAL FUNC fileparameterdata SeparateParams(string ParamLine)
+        VAR bool Result;
+        !
+        VAR num SeparatorPos;
+        !
+        VAR fileparameterdata ConvParams;
+
+        SeparatorPos:=StrFind(ParamLine,1,":");
+        ConvParams.Name:=StrPart_(ParamLine,1,SeparatorPos-1);
+        ConvParams.ValueStr:=StrPart_(ParamLine,SeparatorPos+1,StrLen(ParamLine)-SeparatorPos);
+
+        IF StrFind(ConvParams.ValueStr,1,"0123456789-.")=1 THEN
+            Result:=StrToVal(ConvParams.ValueStr,ConvParams.ValueNum);
+            ConvParams.ValueDnum:=NumToDnum(ConvParams.ValueNum);
+        ELSEIF StrMatch(ConvParams.ValueStr,1,"True")=1 THEN
+            ConvParams.ValueBool:=TRUE;
+        ELSEIF StrMatch(ConvParams.ValueStr,1,"False")=1 THEN
+            ConvParams.ValueBool:=FALSE;
+        ENDIF
+
+        RETURN ConvParams;
+    ENDFUNC
+
+    LOCAL FUNC string RemWhiteSpace(string TextLine)
+
+        IF TextLine="" RETURN TextLine;
+
+        ! Delete double spaces, the space before or after a semi column or the space at the first or last pos of the string
+        TextLine:=StrReplace(TextLine,"  "," ");
+        TextLine:=StrReplace(TextLine,": ",":");
+        TextLine:=StrReplace(TextLine," :",":");
+        IF StrFind(TextLine,1," ")=1 TextLine:=StrPart_(TextLine,2,StrLen(TextLine)-1);
+        IF StrFind(TextLine,StrLen(TextLine)," ")<=StrLen(TextLine) TextLine:=StrPart_(TextLine,1,StrLen(TextLine)-1);
+
+        RETURN TextLine;
+    ENDFUNC
+
+    PROC ReadDStr(VAR iodev File,INOUT string ParamLine{*})
+        VAR string TextLine1;
+        VAR string TextLine2;
+        VAR string Status;
+        !
+        VAR num SearchPos:=1;
+        VAR num SplitPos;
+
+        TextLine1:=ReadStr(File\RemoveCR\Status:=Status);
+
+        IF Status<>"REMAIN" THEN
+            ParamLine:=[TextLine1,""];
+            RETURN ;
+        ENDIF
+
+        ! Search for the last space in the text
+        WHILE SearchPos<StrLen(TextLine1) DO
+            SplitPos:=SearchPos;
+            SearchPos:=StrFind(TextLine1,SearchPos+1," ");
+        ENDWHILE
+
+        TextLine2:=ReadStr(File\RemoveCR);
+
+        ! Split the text lines from the file at the last space of the first text line
+        ParamLine{1}:=RemWhiteSpace(StrPart_(TextLine1,1,SplitPos-1));
+        ParamLine{2}:=RemWhiteSpace(StrPart_(TextLine1,SplitPos+1,StrLen(TextLine1)-SplitPos)+TextLine2);
+    ENDPROC
+
+    ! Wrapper for StrPart to get back the old RW6 behaviour: return an empty string instead of a runtime error
+    FUNC string StrPart_(string Str,num ChPos,num Len)
+        IF Len<1 RETURN "";
+        IF StrLen(Str)<ChPos+Len-1 RETURN "";
+        RETURN StrPart(Str,ChPos,Len);
+    ENDFUNC
+
+    ! Replace all occurances of FromMap to ToMap
+    FUNC string StrReplace(string Str,string FromMap,string ToMap)
+        VAR num Found;
+
+        WHILE TRUE DO
+            Found:=StrMatch(Str,1,FromMap);
+            IF Found>StrLen(Str) RETURN Str;
+            Str:=StrPart_(Str,1,Found-1)+ToMap+StrPart_(Str,Found+StrLen(FromMap),StrLen(Str)-Found-1);
+        ENDWHILE
+    ENDFUNC
+ENDMODULE

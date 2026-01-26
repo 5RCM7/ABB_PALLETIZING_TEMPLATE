@@ -1,0 +1,103 @@
+MODULE Gripper
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.001                                                              **
+    !** Date:    15-10-2024                                                            **
+    !**                                                                                **
+    !** Module:  Gripper                                                               **
+    !**                                                                                **
+    !************************************************************************************
+
+    ! This module contains routine for the gripper control. These routines are example routines that
+    ! can be modified according the gripper used for the recipe.
+    ! The example routines are typically used for vacuum grippers
+    !
+    ! In this example a trifold gripper is used that can handle a load of up to three boxes
+
+    !************************************************************************************
+    ! Open the gripper to deposit the box(es) onto the pallet
+    !************************************************************************************
+    PROC VacuumOff()
+
+        ! switch vacuum off. All boxes will be deposited a once.
+        Reset doVacuum1;
+        Reset doVacuum2;
+        Reset doVacuum3;
+
+        ! Wait for the vacuum to release. The PlaceTime can be tuned from the FlexPendant app.
+        WaitTime PlaceTime;
+
+        ! Release the load from the gripper.
+        GripLoad load0;
+    ENDPROC
+
+    !************************************************************************************
+    ! Close the gripper to pick the box(es) from the feeder
+    !************************************************************************************
+    PROC VacuumOn(num BoxesToPick\switch NoVacuumCheck)
+
+        ! Switch vacuum on. Vacuum is switched on only for the boxes that need to be picked.
+        Set doVacuum1;
+        IF BoxesToPick>=2 Set doVacuum2;
+        IF BoxesToPick>=3 Set doVacuum3;
+
+        ! Wait for the vacuum to activate. The PickTime can be tuned from the FlexPendant app.
+        WaitTime PickTime;
+
+        ! Add the load of the boxes to the gripper.
+        GripLoad BoxLoad;
+
+        ! Exit the CloseGripper routine when a vacuum check is not required
+        IF Present(NoVacuumCheck) RETURN ;
+
+        ! Check if the vacuum is reached for box gripper 1 and 2.
+        CheckVacuum 1;
+        IF BoxesToPick>=2 CheckVacuum 2;
+        IF BoxesToPick>=3 CheckVacuum 3;
+    ENDPROC
+
+    PROC CheckVacuum(num GripperUnit)
+        VAR bool VacTimeOut;
+        !
+        VAR btnres Answer:=resUnkwn;
+        !
+        VAR signaldi Signal;
+
+        ! Setup alias IO for diVacuumCheck1 or diVacuumCheck2
+        GetDataVal "diVacuumCheck"+NumToStr(GripperUnit,0),Signal;
+
+        WHILE Signal=0 AND Answer<>resYes DO
+
+            ! Wait for the input from the vacuum sensor
+            WaitDI Signal,1\MaxTime:=3\TimeFlag:=VacTimeOut;
+
+            ! Let the user choose to repeat or bypass(cancel) the vacuum check if vacuum isn't reached before the time-out
+            IF VacTimeOut
+                Answer:=UIMessageBox(
+                    \Header:="Vacuum error"
+                    \MsgArray:=["Vacuum is not reached on vacuum system "+NumToStr(GripperUnit,0),"Please check vacuum system "+NumToStr(GripperUnit,0)+" on the gripper"]
+                    \Buttons:=btnRetryCancel
+                    \Icon:=iconError);
+
+            ! If vacuum check is bypassed make sure that is what the user wants
+            IF Answer=resCancel
+                Answer:=UIMessageBox(
+                    \Header:="User information"
+                    \MsgArray:=["Are you sure you want to continue without","the vacuum check?"]
+                    \Buttons:=btnYesNoCancel
+                    \Icon:=iconQuestion);
+        ENDWHILE
+    ENDPROC
+
+    PROC InitVacuum()
+
+        ! switch vacuum off on both circuits.
+        Reset doVacuum1;
+        Reset doVacuum2;
+        Reset doVacuum3;
+    ENDPROC
+ENDMODULE

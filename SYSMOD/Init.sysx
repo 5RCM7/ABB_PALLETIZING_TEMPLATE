@@ -1,0 +1,545 @@
+MODULE Init(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.006                                                              **
+    !** Date:    31-03-2025                                                            **
+    !**                                                                                **
+    !** Module:  Init                                                                  **
+    !**                                                                                **
+    !************************************************************************************
+
+    RECORD formuladata
+        string Formula;
+        string BoxOrient;
+        num XCalcL;
+        num XCalcW;
+        num YCalcL;
+        num YCalcW;
+        num Group;
+    ENDRECORD
+
+    RECORD childdata
+        num Child1;
+        num Child2;
+        num Child3;
+        num Child4;
+        num Child5;
+    ENDRECORD
+
+    RECORD patterndata
+        formuladata Formula;
+        pos Position;
+        num ApproachDir;
+        num VacuumGroup;
+        num PickOrient;
+        num PlaceOrient;
+        num LabelOrient;
+        num ID;
+        num Parent;
+        num LinkedType;
+        childdata Child;
+        num BoxCnt;
+    ENDRECORD
+
+    RECORD layerrefdata
+        string Name;
+        num PatternRef;
+        num NrOfBoxes;
+        num NrOfCycles;
+        bool Slipsheet;
+    ENDRECORD
+
+    RECORD boxdata
+        num Length;
+        num Width;
+        num Height;
+        num CorrLength;
+        num CorrWidth;
+        num CorrHeight;
+        num Weight;
+        bool LabelPos0;
+        bool LabelPos1;
+        bool LabelPos2;
+        bool LabelPos3;
+        num LongSideLead;
+        num ShortSideLead;
+    ENDRECORD
+
+    RECORD paldata
+        num Length;
+        num Width;
+        num Height;
+        num NrOfLayers;
+        num MaxHeight;
+    ENDRECORD
+
+    RECORD slipsheetdata
+        num Count;
+        bool Placed;
+    ENDRECORD
+
+    RECORD slipsheetsizedata
+        num Length;
+        num Width;
+        num Thickness;
+        num StackHeight;
+        num SearchHeight;
+    ENDRECORD
+
+    RECORD sizedata
+        num Length;
+        num Width;
+        num XOffset;
+        num YOffset;
+    ENDRECORD
+
+    PERS patterndata Pattern{3,4,60};
+    !
+    PERS layerrefdata StackConfig{20}:=
+    [
+        ["wc",1,16,16,FALSE],["wc",1,16,16,FALSE],["wc",1,16,16,FALSE],["wc",1,16,16,FALSE],["wc",1,16,16,FALSE],
+        ["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],
+        ["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],
+        ["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE],["",0,0,0,FALSE]
+    ];
+    !
+    PERS string LayerName{3}:=["wc","wc","wc"];
+    !
+    PERS sizedata PatternSize:=[1157,783,0,0];
+    !
+    PERS boxdata Box:=[298,187,271,298,187,271,9.378,FALSE,FALSE,FALSE,FALSE,0,1];
+    !
+    PERS paldata Pallet:=[1200,800,170,5,1525];
+    !
+    PERS slipsheetdata PlacedSlipsheets{4}:=[[0,FALSE],[0,FALSE],[0,FALSE],[0,FALSE]];
+    !
+    PERS slipsheetsizedata Slipsheet:=[0,0,0,0,-1];
+    !
+    PERS num StartCorner{4}:=[1,1,1,0];
+    PERS num LayerCnt{4}:=[6,1,1,1];
+    PERS num CycleCnt{4}:=[1,1,1,1];
+    CONST num LONG_SIDE_LINKED:=1;
+    CONST num SHORT_SIDE_LINKED:=2;
+    PERS num StartLayer{4}:=[1,1,1,1];
+    PERS num StartCycle{4}:=[1,1,1,1];
+
+    !
+    VAR errnum ERR_HOMERUN:=-1;
+    VAR errnum ERR_INVALID_PALLET:=-1;
+    VAR errnum ERR_INVALID_FEEDER:=-1;
+    VAR errnum ERR_NO_PALLET_AVAILABLE:=-1;
+    VAR errnum ERR_NO_ACTIVE_PALLET_PRESENT:=-1;
+    !
+    VAR intnum intProductionStatus;
+    VAR intnum intReleasePallet1;
+    VAR intnum intReleasePallet2;
+    VAR intnum intReleasePallet3;
+    VAR intnum intReleasePallet4;
+    VAR intnum intPalletIOUpdate;
+    !
+    PERS loaddata BoxLoad:=[9.378,[0,0,135.5],[1,0,0,0],0,0,0];
+    !
+    TASK PERS wobjdata obPalletArray{4}:=
+    [
+        [FALSE,TRUE,"",[[-600,350,-1000],[1,0,0,0]],[[0,0,0],[1,0,0,0]]],
+        [FALSE,TRUE,"",[[-600,-1150,-1000],[1,0,0,0]],[[0,0,0],[1,0,0,0]]],
+        [FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[0,0,0],[1,0,0,0]]],
+        [FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[0,0,0],[1,0,0,0]]]
+    ];
+    TASK PERS wobjdata obFeederArray{2}:=
+    [
+        [FALSE,TRUE,"",[[957.5,1074,700],[1,0,0,0]],[[0,0,0],[1,0,0,0]]],
+        [FALSE,TRUE,"",[[980,40,-200],[1,0,0,0]],[[0,0,0],[1,0,0,0]]]
+    ];
+    !
+    PERS speeddata vToInfeed:=[2000,500,1000,1000];
+    PERS speeddata vInfeedDepart:=[1500,500,1000,1000];
+    PERS speeddata vToPallet:=[2000,500,1000,1000];
+    PERS speeddata vPalletApproach:=[1500,500,1000,1000];
+    !
+    CONST zonedata z500:=[FALSE,500,600,600,60,600,60];
+
+    LOCAL PROC ClearPattern()
+        FOR i FROM 1 TO Dim(Pattern,1) DO
+            FOR j FROM 1 TO Dim(Pattern,2) DO
+                FOR k FROM 1 TO Dim(Pattern,3) DO
+                    Pattern{i,j,k}:=[["","",0,0,0,0,0],[0,0,0],0,0,0,0,0,0,0,0,[0,0,0,0,0],0];
+                ENDFOR
+            ENDFOR
+        ENDFOR
+    ENDPROC
+
+    LOCAL PROC ClearStackConfig()
+        FOR i FROM 1 TO Dim(StackConfig,1) DO
+            StackConfig{i}:=["",0,0,0,FALSE];
+        ENDFOR
+    ENDPROC
+
+    PROC InitAll()
+        ProductionStatus:=STATUS_RESTART;
+
+        ! Perform a range check on all settings
+        ParamRangeCheck;
+
+        ! Init Pallets
+        LayerCnt:=[1,1,1,1];
+        CycleCnt:=[1,1,1,1];
+        PlacedSlipsheets:=[[0,FALSE],[0,FALSE],[0,FALSE],[0,FALSE]];
+        StartCorner:=[0,0,0,0];
+        LayerName:=["","",""];
+        PalletStatus:=[PALLET_FULL,PALLET_FULL,PALLET_FULL,PALLET_FULL];
+        PalletIOUpdate;
+
+        ! Init data to FP app
+        ! 60 placeholders for FP app layer formula (6x10)
+        CurrentLayerFormula:=
+        [
+            "","","","","","","","","","",
+            "","","","","","","","","","",
+            "","","","","","","","","","",
+            "","","","","","","","","","",
+            "","","","","","","","","","",
+            "","","","","","","","","",""
+        ];
+        CurrentBoxParents:=
+        [
+            0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0,
+            0,0,0,0,0,0,0,0,0,0
+        ];
+        CurrentBoxStatus:=
+        [
+            1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1,
+            1,1,1,1,1,1,1,1,1,1
+        ];
+        ActLayer:=1;
+
+        ClearPattern;
+        ClearStackConfig;
+        Pallet:=[0,0,0,0,0];
+        Box:=[0,0,0,0,0,0,0,FALSE,FALSE,FALSE,FALSE,0,0];
+        Slipsheet:=[0,0,0,0,-1];
+
+        ! Variables
+        FeederApprOffset:=0;
+        FeederDepartOffset:=0;
+        TargetPallet:=1;
+        PalletApprOffset:=0;
+        CurrentPalletZ:=9E9;
+        PalletDepartOffset:=0;
+        AbsFeederHeight:=0;
+        AbsPalletHeight:=[0,0,0,0];
+        AbsFeederHeight:=0;
+        BoxesTotal:=0;
+        BoxesOnPallet:=0;
+
+
+
+        ! Init Feeders
+        obFeederArray{1}:=obFeeder1;
+        obFeederArray{2}:=obFeeder2;
+
+        ! Init pallets
+        obPalletArray{1}:=obPallet1;
+        obPalletArray{2}:=obPallet2;
+        obPalletArray{3}:=obPallet3;
+        obPalletArray{4}:=obPallet4;
+
+        ! Book errors
+        IF ERR_INVALID_PALLET=-1 BookErrNo ERR_INVALID_PALLET;
+        IF ERR_INVALID_FEEDER=-1 BookErrNo ERR_INVALID_FEEDER;
+        IF ERR_NO_PALLET_AVAILABLE=-1 BookErrNo ERR_NO_PALLET_AVAILABLE;
+        IF ERR_NO_ACTIVE_PALLET_PRESENT=-1 BookErrNo ERR_NO_ACTIVE_PALLET_PRESENT;
+
+        ! Setup interrupts
+        IDelete intProductionStatus;
+        CONNECT intProductionStatus WITH TrpProductionStatus;
+        IPers AppCommand,intProductionStatus;
+
+        ! Release pallets through IO's
+        IDelete intReleasePallet1;
+        CONNECT intReleasePallet1 WITH trpReleasePallet1;
+        ISignalDI diNewPallet1,1,intReleasePallet1;
+
+        IDelete intReleasePallet2;
+        CONNECT intReleasePallet2 WITH trpReleasePallet2;
+        ISignalDI diNewPallet2,1,intReleasePallet2;
+
+        IDelete intReleasePallet3;
+        CONNECT intReleasePallet3 WITH trpReleasePallet3;
+        ISignalDI diNewPallet3,1,intReleasePallet3;
+
+        IDelete intReleasePallet4;
+        CONNECT intReleasePallet4 WITH trpReleasePallet4;
+        ISignalDI diNewPallet4,1,intReleasePallet4;
+
+        IDelete intPalletIOUpdate;
+        CONNECT intPalletIOUpdate WITH trpPalletIOUpdate;
+        IPers PalletStatus,intPalletIOUpdate;
+    ENDPROC
+
+    PROC InitPallet(num PalletNr,num StLayer,num StCycle)
+        LayerCnt{PalletNr}:=StLayer;
+        CycleCnt{PalletNr}:=StCycle;
+        PlacedSlipsheets{PalletNr}:=[0,FALSE];
+    ERROR
+        TEST ERRNO
+        CASE ERR_INVALID_PALLET:
+            ErrWrite Common_Header_1,Data_Txt_A1\RL2:=Data_Txt_A2\RL3:=Data_Txt_A3;
+        ENDTEST
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDPROC
+
+    PROC UpdateProductDimensions()
+        PalletLength:=Pallet.Length;
+        PalletWidth:=Pallet.Width;
+        !
+        BoxLength:=Box.Length;
+        BoxWidth:=Box.Width;
+        BoxHeight:=Box.Height;
+        !
+        Box.CorrLength:=BoxLength+OffsBoxLength;
+        Box.CorrWidth:=BoxWidth+OffsBoxWidth;
+        Box.CorrHeight:=BoxHeight+OffsBoxHeight;
+    ENDPROC
+
+    PROC UpdateMotionParams()
+        vToInfeed.v_tcp:=ReturnSpeed;
+        vToPallet.v_tcp:=PalletSpeed;
+        vPalletApproach.v_tcp:=PlaceSpeed;
+        vInfeedDepart.v_tcp:=PickSpeed;
+    ENDPROC
+
+    !
+    ! Event routine: continue program execution
+    PROC Restart()
+
+        ! Pallet IO status update
+        PalletIOUpdate;
+
+        ! Book the error
+        IF ERR_HOMERUN=-1 BookErrNo ERR_HOMERUN;
+
+        IF AppCommand=CMD_HOME_RUN THEN
+            TEST ProductionStatus
+            CASE STATUS_RESTART:
+                ProductionStatus:=STATUS_START_CYCLE_HOMERUN;
+                RAISE ERR_HOMERUN;
+            CASE STATUS_START_CYCLE_HOMERUN:
+                ! Status remains unchanged until the robot has reached the home position
+            CASE STATUS_START_CYCLE_AT_HOME:
+                IF AppCommand=CMD_NONE ProductionStatus:=STATUS_PRODUCTION;
+            CASE STATUS_PRODUCTION:
+                ProductionStatus:=STATUS_PRODUCTION_HOMERUN;
+                RAISE ERR_HOMERUN;
+            CASE STATUS_PRODUCTION_HOMERUN:
+                ! Status remains unchanged until the robot has reached the home position
+            CASE STATUS_PRODUCTION_AT_HOME:
+                IF AppCommand=CMD_NONE ProductionStatus:=STATUS_PRODUCTION;
+            CASE STATUS_END_CYCLE:
+                ProductionStatus:=STATUS_END_CYCLE_HOMERUN;
+                RAISE ERR_HOMERUN;
+            CASE STATUS_END_CYCLE_HOMERUN:
+                ! Status remains unchanged until the robot has reached the home position
+            CASE STATUS_END_CYCLE_AT_HOME:
+                IF AppCommand=CMD_NONE ProductionStatus:=STATUS_PRODUCTION;
+            CASE STATUS_END_PALLET:
+                ProductionStatus:=STATUS_END_PALLET_HOMERUN;
+                RAISE ERR_HOMERUN;
+            CASE STATUS_END_PALLET_HOMERUN:
+                ! Status remains unchanged until the robot has reached the home position
+            CASE STATUS_END_PALLET_AT_HOME:
+                IF AppCommand=CMD_NONE ProductionStatus:=STATUS_PRODUCTION;
+            ENDTEST
+        ENDIF
+        IF AppCommand<>CMD_HOME_RUN AppCommand:=CMD_NONE;
+    ERROR
+        IF AppCommand<>CMD_HOME_RUN AppCommand:=CMD_NONE;
+        RAISE ;
+    ENDPROC
+
+    PROC UpdateProductionStatus(\switch BeforeMoveHome\switch AfterMoveHome)
+        VAR robtarget pCurrent;
+
+        IF Present(BeforeMoveHome) THEN
+            TEST ProductionStatus
+            CASE STATUS_RESTART:
+                ProductionStatus:=STATUS_START_CYCLE_HOMERUN;
+            CASE STATUS_PRODUCTION:
+                ProductionStatus:=STATUS_PRODUCTION_HOMERUN;
+            ENDTEST
+            RETURN ;
+        ENDIF
+
+        IF Present(AfterMoveHome) THEN
+            pCurrent:=CRobT(\WObj:=wobj0);
+            CurrentPalletZ:=pCurrent.trans.z;
+
+            TEST ProductionStatus
+            CASE STATUS_START_CYCLE_HOMERUN:
+                ProductionStatus:=STATUS_RESTART;
+            CASE STATUS_PRODUCTION_HOMERUN:
+                ProductionStatus:=STATUS_PRODUCTION_AT_HOME;
+            CASE STATUS_END_CYCLE_HOMERUN:
+                ProductionStatus:=STATUS_END_CYCLE_AT_HOME;
+            CASE STATUS_END_PALLET_HOMERUN:
+                ProductionStatus:=STATUS_END_PALLET_AT_HOME;
+            ENDTEST
+            RETURN ;
+        ENDIF
+    ENDPROC
+
+    TRAP trpReleasePallet1
+        IF PalletStatus{1}<>PALLET_RUNNING AND Palletize{1}<>SYS_NOT_USED PalletStatus{1}:=PALLET_NEW;
+    ENDTRAP
+
+    TRAP trpReleasePallet2
+        IF PalletStatus{2}<>PALLET_RUNNING AND Palletize{2}<>SYS_NOT_USED PalletStatus{2}:=PALLET_NEW;
+    ENDTRAP
+
+    TRAP trpReleasePallet3
+        IF PalletStatus{3}<>PALLET_RUNNING AND Palletize{3}<>SYS_NOT_USED PalletStatus{3}:=PALLET_NEW;
+    ENDTRAP
+
+    TRAP trpReleasePallet4
+        IF PalletStatus{4}<>PALLET_RUNNING AND Palletize{4}<>SYS_NOT_USED PalletStatus{4}:=PALLET_NEW;
+    ENDTRAP
+
+    TRAP trpPalletIOUpdate
+        PalletIOUpdate;
+    ENDTRAP
+
+    PROC PalletIOUpdate()
+        IF PalletStatus{1}=PALLET_FULL AND Palletize{1}<>SYS_NOT_USED THEN
+            Set doPalletFull1;
+        ELSE
+            Reset doPalletFull1;
+        ENDIF
+        IF PalletStatus{2}=PALLET_FULL AND Palletize{2}<>SYS_NOT_USED THEN
+            Set doPalletFull2;
+        ELSE
+            Reset doPalletFull2;
+        ENDIF
+        IF PalletStatus{3}=PALLET_FULL AND Palletize{3}<>SYS_NOT_USED THEN
+            Set doPalletFull3;
+        ELSE
+            Reset doPalletFull3;
+        ENDIF
+        IF PalletStatus{4}=PALLET_FULL AND Palletize{4}<>SYS_NOT_USED THEN
+            Set doPalletFull4;
+        ELSE
+            Reset doPalletFull4;
+        ENDIF
+    ENDPROC
+
+    LOCAL PROC ParamRangeCheck()
+        ! Perform validity checks on the Settings
+
+        FOR i FROM 1 TO Dim(Palletize,1) DO
+            ! Palletize variable
+            RangeCheck Palletize{i},0,3,Common_Header_1,Init_Txt_A1\RL2:=Init_Txt_A2\RL3:=Init_Txt_A3\RL4:=Init_Txt_A4;
+
+            ! AllowAppRelease variable
+            RangeCheck AllowAppRelease{i},0,2,Common_Header_1,Init_Txt_B1\RL2:=Init_Txt_B2\RL3:=Init_Txt_B3\RL4:=Init_Txt_B4;
+
+            ! CORNER_LOWER_LAYERS and CORNER_UPPER_LAYERS variable
+            IF Palletize{i}<>SYS_NOT_USED THEN
+                RangeCheck CORNER_LOWER_LAYERS{i},1,4,Common_Header_1,Init_Txt_C1\RL2:=Init_Txt_C3\RL3:=Init_Txt_C4;
+                RangeCheck CORNER_UPPER_LAYERS{i},1,4,Common_Header_1,Init_Txt_C2\RL2:=Init_Txt_C3\RL3:=Init_Txt_C4;
+            ENDIF
+        ENDFOR
+
+        ! PickObjLocation variable
+        RangeCheck PickObjLocation,1,3,Common_Header_1,Init_Txt_D1\RL2:=Init_Txt_D2\RL3:=Init_Txt_D3\RL4:=Init_Txt_D4;
+
+        ! GripperType variable
+        RangeCheck GripperType,0,11,Common_Header_1,Init_Txt_E1\RL2:=Init_Txt_E2\RL3:=Init_Txt_E3\RL4:=Init_Txt_E4;
+
+        ! MaxShortSideLead and MaxLongSideLead combination check
+        IF MaxLongSideLead>0 AND MaxShortSideLead>0 THEN
+            ErrWrite Common_Header_1,Init_Txt_F1\RL2:=Init_Txt_F2\RL3:=Init_Txt_F3;
+            Stop;
+            ExitCycle;
+        ENDIF
+
+        ! MaxShortSideLead and MaxLongSideLead combination check
+        IF MaxLongSideLead=0 AND MaxShortSideLead=0 THEN
+            ErrWrite Common_Header_1,Init_Txt_I1\RL2:=Init_Txt_I2\RL3:=Init_Txt_I3;
+            Stop;
+            ExitCycle;
+        ENDIF
+
+        ! MaxShortSideLead variable
+        RangeCheck MaxLongSideLead,0,3,Common_Header_1,Init_Txt_G1\RL2:=Init_Txt_G2\RL3:=Init_Txt_G3;
+
+        ! MaxLongSideLead variable
+        RangeCheck MaxShortSideLead,0,3,Common_Header_1,Init_Txt_H1\RL2:=Init_Txt_H2\RL3:=Init_Txt_H3;
+
+        ! Range check on offsets
+        RangeCheck FEEDER_APPROACH_X,-2000,2000,Common_Header_1,Init_Txt_J1\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck FEEDER_APPROACH_Y,-2000,2000,Common_Header_1,Init_Txt_J2\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck FEEDER_APPROACH_Z,-2000,2000,Common_Header_1,Init_Txt_J3\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck FEEDER_DEPART_X,-2000,2000,Common_Header_1,Init_Txt_J4\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck FEEDER_DEPART_Y,-2000,2000,Common_Header_1,Init_Txt_J5\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck FEEDER_DEPART_Z,-2000,2000,Common_Header_1,Init_Txt_J6\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+
+        RangeCheck PALLET_APPROACH_X,-2000,2000,Common_Header_1,Init_Txt_J7\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck PALLET_APPROACH_Y,-2000,2000,Common_Header_1,Init_Txt_J8\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck PALLET_APPROACH_Z,-2000,2000,Common_Header_1,Init_Txt_J9\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck PALLET_DEPART_X,-2000,2000,Common_Header_1,Init_Txt_J10\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck PALLET_DEPART_Y,-2000,2000,Common_Header_1,Init_Txt_J11\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck PALLET_DEPART_Z,-2000,2000,Common_Header_1,Init_Txt_J12\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck LOW_APPROACH_OFFS,-2000,2000,Common_Header_1,Init_Txt_J13\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+
+        RangeCheck SLIPSHEET_APPROACH_X,-2000,2000,Common_Header_1,Init_Txt_J14\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck SLIPSHEET_APPROACH_Y,-2000,2000,Common_Header_1,Init_Txt_J15\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck SLIPSHEET_APPROACH_Z,-2000,2000,Common_Header_1,Init_Txt_J16\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck SLIPSHEET_DEPART_X,-2000,2000,Common_Header_1,Init_Txt_J17\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck SLIPSHEET_DEPART_Y,-2000,2000,Common_Header_1,Init_Txt_J18\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck SLIPSHEET_DEPART_Z,-2000,2000,Common_Header_1,Init_Txt_J19\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+
+        RangeCheck OPT_TOP_X_SAFE{1},-2000,2000,Common_Header_1,Init_Txt_J20\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_X_SAFE{2},-2000,2000,Common_Header_1,Init_Txt_J20\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_X_SAFE{3},-2000,2000,Common_Header_1,Init_Txt_J20\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_X_SAFE{4},-2000,2000,Common_Header_1,Init_Txt_J20\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        
+        RangeCheck OPT_TOP_Y_SAFE{1},-2000,2000,Common_Header_1,Init_Txt_J21\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_Y_SAFE{2},-2000,2000,Common_Header_1,Init_Txt_J21\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_Y_SAFE{3},-2000,2000,Common_Header_1,Init_Txt_J21\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+        RangeCheck OPT_TOP_Y_SAFE{4},-2000,2000,Common_Header_1,Init_Txt_J21\RL2:=Init_Txt_J30\RL3:=Init_Txt_J31;
+    ENDPROC
+
+    PROC RangeCheck(
+        num Value,
+        num Min,
+        num Max,
+        string Header,
+        string Reason,
+        \string RL2,
+        \string RL3,
+        \string RL4)
+
+        IF Value<Min OR Value>Max THEN
+            ErrWrite Header,Reason\RL2?RL2\RL3?RL3\RL4?RL4;
+            Stop;
+            ExitCycle;
+        ENDIF
+    ENDPROC
+
+    PROC StopEvent()
+        Slipsheet.SearchHeight:=-1;
+    ENDPROC
+ENDMODULE

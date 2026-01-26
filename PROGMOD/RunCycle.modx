@@ -1,0 +1,221 @@
+MODULE RunCycle
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.001                                                              **
+    !** Date:    15-10-2024                                                            **
+    !**                                                                                **
+    !** Module:  RunCycle                                                              **
+    !**                                                                                **
+    !************************************************************************************
+    PERS robtarget pTemp1:=[[1079.5,748,1946],[3.7494E-33,6.12323E-17,1,6.12323E-17],[0,0,0,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]];
+    PERS robtarget pTemp2:=[[1029.5,698,1525],[3.7494E-33,6.12323E-17,1,6.12323E-17],[0,0,0,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]];
+    VAR num nLastZMemFlo  := 0;
+
+
+    PROC PickPlaceSeq()
+        VAR num SlipsheetPos;
+
+        ! Set the palletizing cycle. The workobjects to be used for the feeder (obFeeder) and the pallet (obPallet) will be set automatically.
+        SetPalletizeCycle GetActivePallet(),1;
+
+!        ! Pick - Place cycle
+!        PickFeeder;
+!        PlacePallet;
+
+!        ! Check if a slipsheet needs to placed
+!        WHILE GetSlipsheet() DO
+!            PickSlipsheet;
+!            PlaceSlipsheet;
+!        ENDWHILE
+ ! Insérer l'intercalaire avant d'entamer la couche
+        WHILE GetSlipsheet() DO
+            PickSlipsheet;
+            PlaceSlipsheet;
+        ENDWHILE
+
+        ! Pick - Place cycle
+        PickFeeder;
+        PlacePallet;
+    ERROR
+        TEST ERRNO
+        CASE ERR_NO_PALLET_AVAILABLE:
+            WaitTime 0.1;
+            RETURN ;
+        CASE ERR_NO_ACTIVE_PALLET_PRESENT:
+            WaitTime 0.1;
+            RETURN ;
+        ENDTEST
+    ENDPROC
+
+    PROC PickFeeder()
+        VAR robtarget PickTarget;
+        VAR robtarget pNowWobj0;
+        VAR num nZDiff;
+        !
+        VAR num NrOfItems;
+
+        ! Get the feeder pick position
+        GetFeederItem PickTarget,tVacuum\NrOfItems:=NrOfItems;
+
+
+        ! Lock axis 4 to avoid singularities
+        SingArea\Off;
+        ConfL\Off;
+
+        ! Move to the feeder approach position
+        !MoveJ GetFeederApproach(PickTarget),vToInfeed,z500,tVacuum\WObj:=obFeeder;
+        MoveJ offs(pPickTarget,0,0,200),vToInfeed,z500,tVacuum;
+        
+        ! Wait for a box to be present at the end of the feeder
+        WaitDI diBoxAtFeeder,1;
+
+
+        ! Move to the pick position
+        MoveL pPickTarget,vToInfeed,fine,tVacuum;
+        pNowWobj0 := CRobT(\Tool:=tVacuum, \WObj:=wobj0);
+        ! Close the gripper and check for vacuum
+        VacuumOn NrOfItems;
+
+        ! Reduce acceleration if needed
+        AccSet Acceleration,Acceleration;
+
+        ! Move above the conveyor
+        !MoveL GetFeederDepart(PickTarget),vInfeedDepart,z200,tVacuum\WObj:=obFeeder;
+        !!!!!!!!!!!!!!!!!!!!!!
+        nZDiff := pNowWobj0.trans.z - nLastZMemFlo;
+        IF nZDiff < 0 THEN 
+
+            MoveL offs(pPickTarget,0,0,400-nZDiff),vToInfeed,z20,tVacuum;
+            MoveL offs(pPickTarget,-300,0,400-nZDiff),vToInfeed,z20,tVacuum;
+        ELSE
+            MoveL offs(pPickTarget,0,0,200),vToInfeed,z20,tVacuum;
+            MoveL offs(pPickTarget,-300,0,200),vToInfeed,z20,tVacuum;
+        ENDIF
+    ENDPROC
+
+    PROC PlacePallet()
+        VAR robtarget PlaceTarget;
+        VAR robtarget PlaceTargetwobj0;
+
+        ! Get the pallet place position and the associated workobject
+        GetPalletItem PlaceTarget,tVacuum;
+
+        ! Lock axis 4 to avoid singularities
+        SingArea\LockAxis4;
+
+        ! Move to the pallet place position
+        pTemp1 := GetPalletApproach(PlaceTarget);
+        pTemp2 := PlaceTarget;
+        MoveJ GetPalletApproach(PlaceTarget),vToPallet,z200,tVacuum\WObj:=obPallet;
+        
+
+        MoveL GetPalletApproach(PlaceTarget\LowApproach),vPalletApproach,z20,tVacuum\WObj:=obPallet;
+        MoveL PlaceTarget,vPalletApproach,fine,tVacuum\WObj:=obPallet;
+        PlaceTargetwobj0 := CRobT(\tool:=tVacuum\WObj:=wobj0);
+        nLastZMemFlo := PlaceTargetwobj0.trans.z;
+        ! Open the gripper
+        VacuumOff;
+
+        ! Confirm the place cycle
+        PlaceCycleDone TRUE;
+
+        MoveL\Conc,GetPalletDepart(PlaceTarget),vToInfeed,z500,tVacuum\WObj:=obPallet;
+        SingArea \off;
+    ENDPROC
+
+    PROC PickSlipsheet()
+        VAR robtarget SlipsheetPickTarget;
+        !
+        VAR num SearchApproachHeight;
+        VAR num SearchStartHeight;
+
+        ! Get the slipsheet pick position including the approach (safe) height above the stack and the height
+        ! at which the search can start. If the search start height = -1 the robot program has been stopped and
+        ! the search need to be started from the maximum height as the slipshet stack can be filled in the meantime.
+        GetSlipsheetPickItem SlipsheetPickTarget,SearchApproachHeight,SearchStartHeight;
+
+        !MoveJ GetSlipsheetApproach(SlipsheetPickTarget),v5000,z100,tSlipsheet\WObj:=obSheetMag;
+
+!        IF SearchStartHeight>=0 THEN
+!            ! Search can continue from the level where a slipsheet was found in the previous cycle
+!            MoveL Offs(SlipsheetPickTarget,0,0,SearchApproachHeight),v5000,z100,tSlipsheet\WObj:=obSheetMag;
+!            MoveL Offs(SlipsheetPickTarget,0,0,SearchStartHeight+25),v1000,fine,tSlipsheet\WObj:=obSheetMag;
+!        ELSE
+!            ! Search needs to be started from the top
+!            MoveL Offs(SlipsheetPickTarget,0,0,SearchApproachHeight),v5000,fine,tSlipsheet\WObj:=obSheetMag;
+!        ENDIF
+
+        ! Search the stack for a slipsheet
+!        SearchSlipsheet SlipsheetPickTarget,tSlipsheet\WObj:=obSheetMag;
+
+        ! Pick the slipsheet
+        PulseDO doSlipSheet;
+        !MoveJ Offs(SlipsheetPickTarget,0,0,0),v500,fine,tSlipsheet\WObj:=obSheetMag;
+        MoveJ Offs(pPickSlipsheet,0,0,500),v5000,z100,tSlipsheet;
+        SingArea \LockAxis4;
+         MoveL pPickSlipsheet,v1000,fine,MonOutil\WObj:=wobj0;
+         
+         set dogrip;
+         MoveJ Offs(pPickSlipsheet,0,0,500),v5000,z100,tSlipsheet;
+         SingArea \off;
+       ! MoveL GetSlipsheetDepart(SlipsheetPickTarget),v5000,z100,tSlipsheet\WObj:=obSheetMag;
+    ENDPROC
+
+    PROC PlaceSlipsheet()
+        VAR robtarget SlipsheetPlaceTarget;
+
+        ! Get the slipsheet place position and workobject.
+       ! GetSlipsheetPlaceItem SlipsheetPlaceTarget\RotateP2;
+        GetSlipsheetPlaceItem SlipsheetPlaceTarget;
+        ! Place the slipsheet
+        MoveJ RelTool(GetPalletApproach(SlipsheetPlaceTarget\Slipsheet),0,0,0,\Rz:=-90),v1000,z100,tSlipsheet\WObj:=obPallet;
+        MoveJ RelTool(GetPalletApproach(SlipsheetPlaceTarget\LowApproach\Slipsheet),0,0,0,\Rz:=-90),v1000,z100,tSlipsheet\WObj:=obPallet;
+        MoveL reltool(SlipsheetPlaceTarget,0,0,0,\Rz:=-90),v1000,fine,tSlipsheet\WObj:=obPallet;
+        
+        ! Switch the the slip sheet gripper vacuum off.
+        Reset doSlipSheet;
+        reset dogrip;
+        SlipsheetCycleDone TRUE;
+
+        MoveL GetPalletDepart(SlipsheetPlaceTarget\Slipsheet),v5000,z100,tSlipsheet\WObj:=obPallet;
+    ENDPROC
+
+    PROC SearchSlipsheet(robtarget ToPoint,PERS tooldata Tool\PERS wobjdata WObj)
+        VAR robtarget pFound;
+        VAR robtarget pStart;
+
+        ! Switch the the slip sheet gripper vacuum on.
+        Set doSlipSheet;
+
+        pStart:=CRobT(\Tool:=Tool\WObj?WObj);
+        !SearchL\Stop,diSearch,pFound,ToPoint,v50,Tool\WObj?WObj;
+
+        ! Update the slipsheet data with the height at which the slipsheet was found
+        SetSlipsheetSearchHeight pFound.trans.z;
+    ERROR
+        TEST ERRNO
+        CASE ERR_WHLSEARCH:
+            VacuumOff;
+            MoveL pStart,v200,fine,Tool\WObj?WObj;
+            ErrWrite "Search error","No slip sheet was found."\RL2:="Please fill the slipsheet buffer"\RL3:="Restart the robot program to retry";
+            Stop;
+            ResetRetryCount;
+            RETRY;
+        CASE ERR_SIGSUPSEARCH:
+            VacuumOff;
+            ErrWrite "Search error","The search sensor is already high at"\RL2:="the start of the search. Please"\RL3:="check the sensor."\RL4:="Restart the robot program to retry";
+            Stop;
+            ResetRetryCount;
+            RETRY;
+        ENDTEST
+    ENDPROC
+    
+    PROC toto()
+        MoveJ pTemp1,v5000,z100,tVacuum\WObj:=obFeeder;
+        MoveJ pTemp2,v5000,z100,tVacuum\WObj:=obPallet;
+    ENDPROC
+ENDMODULE

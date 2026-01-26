@@ -1,0 +1,147 @@
+MODULE AppData(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.003                                                              **
+    !** Date:    07-05-2025                                                            **
+    !**                                                                                **
+    !** Module:  AppData                                                               **
+    !**                                                                                **
+    !************************************************************************************
+
+    !********************************************************************************************************************
+    ! **** Palletizing template internal cons tants and variables. These should remain in this module                 ****
+    !********************************************************************************************************************
+    !
+    PERS num CurrentBoxStatus{60}:=[
+        3,3,3,3,3,3,3,3,3,3,
+        3,3,3,3,3,3,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1
+    ];
+    CONST num BOX_NOT_HANDLED:=1;
+    CONST num BOX_HANDLING:=2;
+    CONST num BOX_HANDLED:=3;
+    CONST num BOX_LOST:=4;
+    !
+    ! Commands sent from FP app
+    PERS num AppCommand:=0;
+    CONST num CMD_NONE:=0;
+    CONST num CMD_STOP_END_CYCLE:=1;
+    CONST num CMD_STOP_END_PALLET:=2;
+    CONST num CMD_STOP_CANCEL:=3;
+    CONST num CMD_HOME_RUN:=4;
+    !
+    ! Robot status
+    PERS num ProductionStatus:=3;
+    CONST num STATUS_RESTART:=0;
+    CONST num STATUS_START_CYCLE_HOMERUN:=1;
+    CONST num STATUS_START_CYCLE_AT_HOME:=2;
+    CONST num STATUS_PRODUCTION:=3;
+    CONST num STATUS_PRODUCTION_HOMERUN:=4;
+    CONST num STATUS_PRODUCTION_AT_HOME:=5;
+    CONST num STATUS_END_CYCLE:=6;
+    CONST num STATUS_END_CYCLE_HOMERUN:=7;
+    CONST num STATUS_END_CYCLE_AT_HOME:=8;
+    CONST num STATUS_END_PALLET:=9;
+    CONST num STATUS_END_PALLET_HOMERUN:=10;
+    CONST num STATUS_END_PALLET_AT_HOME:=11;
+    !
+    ! Pallet Status
+    PERS num PalletStatus{4}:=[3,3,3,3];
+    CONST num PALLET_NONE:=0;
+    CONST num PALLET_NEW:=1;
+    CONST num PALLET_RUNNING:=2;
+    CONST num PALLET_FULL:=3;
+    !
+    !************************************************************************************
+    ! Tune data
+    !************************************************************************************
+    !
+    ! Pick tune values from Palletizing template app
+    PERS num XOffsPick:=0;
+    PERS num YOffsPick:=0;
+    PERS num ZOffsPick:=0;
+    !
+    ! Place tune values from Palletizing template app
+    PERS num OffsBoxLength:=0;
+    PERS num OffsBoxWidth:=0;
+    PERS num OffsBoxHeight:=0;
+    !
+    ! Motion tune
+    PERS num PickSpeed:=1500;
+    PERS num PalletSpeed:=2000;
+    PERS num PlaceSpeed:=1500;
+    PERS num ReturnSpeed:=2000;
+    !
+    PERS num Acceleration:=100;
+    !
+    PERS num PickTime:=0.2;
+    PERS num PlaceTime:=0.2;
+    !
+    !************************************************************************************
+    ! Product dimensions
+    !************************************************************************************
+    !
+    ! Box dimensions
+    PERS num BoxLength:=298;
+    PERS num BoxWidth:=187;
+    PERS num BoxHeight:=271;
+    !
+    ! Pallet dimensions
+    PERS num PalletLength:=1200;
+    PERS num PalletWidth:=800;
+    !
+    !************************************************************************************
+    ! Workrange check mode
+    !************************************************************************************
+    !
+    ! Workrange mode 
+    PERS bool WorkrangeCheckMode:=FALSE;
+    !
+    !************************************************************************************
+    ! Palletizing template status
+    !************************************************************************************
+    !
+    ! Actual Layer
+    PERS num ActLayer:=5;
+    !
+    ! Box counters
+    PERS num BoxesTotal:=80;
+    PERS num BoxesOnPallet:=80;
+    !
+    ! New product code
+    PERS string RecipeName:="GEL WC";
+    PERS string ActLayerName:="wc";
+   PERS string CurrentLayerFormula{60}:=
+    [
+        "H;;;","V;;+1w;","H;1l;;","V;+1w;+1w;","V;+2w;+1w;","V;;1l+1w;","V;+1w;1l+1w;","V;2l;;","V;+2w;1l+1w;","V;0.11l+3w;1l;",
+        "V;2l+1w;;","V;0.74l+3w;1l;","H;+3w;2l;","V;2l+2w;;","V;1.37l+3w;1l;","H;1l+3w;2l;","","","","",
+        "","","","","","","","","","",
+        "","","","","","","","","","",
+        "","","","","","","","","","",
+        "","","","","","","","","",""
+    ];
+    PERS num CurrentBoxParents{60}:=
+    [
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0,
+        0,0,0,0,0,0,0,0,0,0
+    ];!
+    ! Type of gripper used in the system:
+    PERS num GripType:=1;
+    !
+    ! Width in mm of the fixed plate for a mechanical gripper
+    PERS num GripWidth:=0;
+    !
+    ! Available gripper positions for the pick. For each of the 8 possible pick positions
+    PERS num AvailPickPos{8}:=[0,0,0,0,0,0,0,0];
+ENDMODULE

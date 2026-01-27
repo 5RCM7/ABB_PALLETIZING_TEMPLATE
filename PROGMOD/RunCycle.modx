@@ -88,7 +88,7 @@ MODULE RunCycle
         !!!!!!!!!!!!!!!!!!!!!!
         nZDiff := pNowWobj0.trans.z - nLastZMemFlo;
         IF nZDiff < 0 THEN 
-
+            ErrWrite\W, "up","up";
             MoveL offs(pPickTarget,0,0,400-nZDiff),vToInfeed,z20,tVacuum;
             MoveL offs(pPickTarget,-300,0,400-nZDiff),vToInfeed,z20,tVacuum;
         ELSE

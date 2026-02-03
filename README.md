@@ -18,6 +18,12 @@ Basé sur le **Palletizing Template**, le programme est structuré en modules di
 3.  **PickPlaceItem (SYSMOD)** : Contient la logique bas-niveau des mouvements (Approches, positions de prise/dépose). Il fait le lien avec `PatternCalc` pour calculer la position de chaque boîte selon le schéma de palettisation.
 4.  **Settings (PROGMOD)** : Centralise les constantes de configuration (dimensions pile, offsets pince, zones de travail).
 
+### Ressources RobotStudio / Pack&Go
+Un fichier **Pack&Go** (.rspag) est disponible à la racine du dépôt : `Palletize Template.rspag`.
+*   Ce fichier contient la station complète à ouvrir dans **RobotStudio**.
+*   Il inclut la configuration physique, le contrôleur virtuel et la simulation.
+*   Utilisez ce fichier pour visualiser la cellule ou tester des modifications hors ligne.
+
 ### Guide d'Installation
 
 Ce guide explique étape par étape comment installer le programme RAPID et l'application Web FlexPendant sur le contrôleur robot.
@@ -109,6 +115,12 @@ Based on the **Palletizing Template**, the program is structured into distinct m
 2.  **RunCycle (PROGMOD)**: Orchestrates the movement sequence (Pick Slip Sheet -> Place -> Pick Box -> Place).
 3.  **PickPlaceItem (SYSMOD)**: Contains low-level motion logic (Approaches, pick/place positions). Interfaces with `PatternCalc` to calculate each box position according to the pallet pattern.
 4.  **Settings (PROGMOD)**: Centralizes configuration constants (stack dimensions, gripper offsets, work zones).
+
+### RobotStudio Resources / Pack&Go
+A **Pack&Go** file (.rspag) is available at the root of the repository: `Palletize Template.rspag`.
+*   This file contains the complete station to be opened in **RobotStudio**.
+*   It includes the physical layout, virtual controller, and simulation.
+*   Use this file to visualize the cell or test changes offline.
 
 ### Installation Guide
 

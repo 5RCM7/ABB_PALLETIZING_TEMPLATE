@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<WebApp>
+    <name>Palletizing</name>
+    <icon>pallicon.png</icon>
+    <path>index.html</path>
+</WebApp>
+
+

@@ -1,0 +1,11 @@
+# Large binary files
+*.rspag
+*.iso
+*.zip
+
+# Temporary and backup files
+*.bak
+*.log
+*.tmp
+Thumbs.db
+Desktop.ini

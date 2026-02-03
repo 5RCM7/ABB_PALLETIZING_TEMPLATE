@@ -1,0 +1,126 @@
+html,
+body {
+  height: 100%;
+  margin: 0;
+  touch-action: none;
+}
+.fp-components-hamburgermenu-a-container,
+.fp-components-tabcontainer {
+  background-color: #f5f5f5 !important;
+}
+.fp-components-base {
+  font-size: 18px !important;
+}
+.justify-center {
+  justify-content: center;
+}
+.justify-end {
+  justify-content: flex-end;
+}
+.layout-infobox-content {
+  padding: 0.4rem;
+}
+.layout-infobox > :nth-child(1) {
+  background-color: #dddddd;
+  border-bottom: none !important;
+  margin-top: 0 !important;
+  border-radius: 0 !important;
+  border-top-left-radius: 10px !important;
+  border-top-right-radius: 10px !important;
+}
+.layout-infobox-content .t-component__container {
+  min-height: 50px !important;
+}
+.layout-infobox > .layout-title {
+  max-height: none !important;
+}
+.layout-infobox > .layout-title > p {
+  text-align: left !important;
+  padding: 8px 5px 5px 15px;
+  margin: 0px;
+  font-weight: 500 !important;
+}
+.tc-container-box {
+  border: none !important;
+  padding: 0 !important;
+  margin: 0px 0px 0px 8px !important;
+}
+.production-img {
+  width: 350px;
+  height: auto;
+}
+.info-box {
+  background-color: rgba(0, 0, 0, 0.04);
+  padding: 10px 20px 10px 20px;
+  border-radius: 10px;
+  border-top: 5px solid #0051ff;
+}
+.info-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+}
+.info-title {
+  font-weight: 600;
+}
+.info-desc {
+  font-style: italic;
+  font-size: 0.85em;
+}
+.evenly {
+  justify-content: space-evenly;
+}
+.my-5 {
+  margin-top: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+.img-container {
+  display: flex;
+  justify-content: center;
+}
+.title {
+  font-weight: bold;
+}
+.fp-components-tabcontainer-tabbar > * > :nth-child(1),
+.fp-components-tabcontainer-tabbar > * > :nth-child(3) {
+  height: 0px !important;
+}
+.fp-components-tabcontainer > :nth-child(1) {
+  background-color: var(--t-color-GRAY-10);
+  padding-left: 0px !important;
+  border-radius: 6px;
+  margin-left: 10px;
+  margin-right: 10px;
+}
+.fp-components-tabcontainer-tabbar {
+  border-radius: 10px;
+}
+.fp-components-tabcontainer-tabbar > * {
+  background-color: #fff !important;
+  margin: 2px !important;
+}
+.fp-components-tabcontainer .fp-components-tabcontainer-activetab {
+  background-color: var(--t-color-BLUE-60) !important;
+  color: #fff;
+}
+.fp-components-tabcontainer-tabbar > * {
+  max-width: none !important;
+  width: 500px !important;
+}
+.flex-07 {
+  flex: 0.7;
+}
+.flex-04 {
+  flex: 0.4;
+}
+.red-text {
+  color: #ef3934;
+}
+.title {
+  padding-top: 5px;
+  font-weight: bolder;
+  font-size: 20px;
+}
+.disp-none {
+  display: none;
+}

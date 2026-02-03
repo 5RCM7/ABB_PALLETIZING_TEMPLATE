@@ -1,0 +1,1170 @@
+MODULE PickPlaceItem(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.008                                                              **
+    !** Date:    26-05-2025                                                            **
+    !**                                                                                **
+    !** Module:  PickPlaceItem                                                         **
+    !**                                                                                **
+    !************************************************************************************
+
+    RECORD wristdata
+        robjoint rj;
+        confdata Cfg;
+    ENDRECORD
+
+    LOCAL PERS robtarget StartPoint:=[[600,400,205],[0,1,0,0],[-1,0,-2,0],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]];
+    !
+    LOCAL VAR jointtarget StartJoint:=[[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]];
+    LOCAL PERS jointtarget PrevRobJoint:=[[104.036,-20.3399,18.9803,0,91.3596,-75.9638],[9E+9,9E+9,9E+9,9E+9,9E+9,9E+9]];
+    !
+    LOCAL PERS bool OptTopLayer:=FALSE;
+    LOCAL PERS bool FullRangeAxis6:=FALSE;
+    !
+    PERS num TargetFeeder:=1;
+    PERS num TargetPallet:=1;
+        PERS num CurrentPalletZ:=675;
+    !
+    PERS num FeederApprOffset:=150;
+    PERS num FeederDepartOffset:=421;
+    PERS num PalletApprOffset:=421;
+    PERS num PalletDepartOffset:=596;
+    PERS num SlipSheetApprOffset:=1421;
+    PERS num SlipSheetDepartOffset:=1692;
+    !
+    PERS num AbsFeederHeight:=971;
+    PERS num AbsPalletHeight{4}:=[525,0,0,0];
+    PERS num AbsSlipSheetHeight:=-300;
+    !
+    LOCAL VAR confdata CfList{24}:=
+    [
+        [0,0,0,0],[0,0,-1,0],[0,0,1,0],[0,0,-2,0],[0,0,2,0],[0,0,-3,0],
+        [0,-1,0,0],[0,-1,-1,0],[0,-1,1,0],[0,-1,-2,0],[0,-1,2,0],[0,-1,-3,0],
+        [0,0,0,1],[0,0,-1,1],[0,0,1,1],[0,0,-2,1],[0,0,2,1],[0,0,-3,1],
+        [0,-1,0,1],[0,-1,-1,1],[0,-1,1,1],[0,-1,-2,1],[0,-1,2,1],[0,-1,-3,1]
+    ];
+
+    !************************************************************************************
+    !
+    ! GLOBAL PALLETIZING TEMPLATE INSTRUCTIONs
+    !
+    !************************************************************************************
+
+    FUNC robtarget GetFeederApproach(robtarget ToPoint)
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+            RETURN GetFApproach(ToPoint);
+        CASE SYS_DEPALLETIZE,3:
+            RETURN GetFDepart(ToPoint);
+        ENDTEST
+    ENDFUNC
+
+    FUNC robtarget GetFeederDepart(robtarget ToPoint)
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+            RETURN GetFDepart(ToPoint);
+        CASE SYS_DEPALLETIZE,3:
+            RETURN GetFApproach(ToPoint);
+        ENDTEST
+    ENDFUNC
+
+    PROC GetFeederItem(INOUT robtarget ToPoint,PERS tooldata Tool\PERS wobjdata AlternativeWObj\INOUT num NrOfItems\INOUT num PickOrient)
+        VAR num PickOri;
+        VAR num LinkedType;
+        VAR num ItemCnt;
+        !
+        VAR sizedata ItemSize;
+
+        ToPoint:=[[0,0,0],[1,0,0,0],[0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]];
+
+        ! Variables used to reduce complexity
+        PickOri:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.PickOrient;
+        LinkedType:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.LinkedType;
+        ItemCnt:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.BoxCnt;
+
+        IF Present(NrOfItems) NrOfItems:=ItemCnt;
+        IF Present(PickOrient) PickOrient:=PickOri;
+
+        ! Set the init value for ToPoint
+        ToPoint.trans:=[XOffsPick,YOffsPick,ZOffsPick];
+
+        TEST GripType
+        CASE GRP_VACUUM_CENTER:
+            ! *******************************************************************
+            ! VACUUM GRIPPER WITH THE TCP AT THE CENTER
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            Add ToPoint.trans.x,ItemSize.Length/2;
+            Add ToPoint.trans.y,ItemSize.Width/2;
+
+            TEST PickOri
+            CASE 1:
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 2:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3:
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 4:
+                ToPoint.rot:=OrientZYX(270,0,180);
+            ENDTEST
+
+        CASE GRP_VACUUM_CORNER:
+            ! *******************************************************************
+            ! VACUUM GRIPPER WITH THE TCP AT THE CORNER
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            Add ToPoint.trans.y,ItemSize.Width/2;
+
+            TEST PickOri
+            CASE 1:
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 3:
+                Add ToPoint.trans.x,ItemSize.Length;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_TCP_SIDE_CENTER_BOT,GRP_MECH_TCP_SIDE_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE FIXED PLATE
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            IF Box.LongSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+            IF Box.ShortSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            TEST PickOri
+            CASE 1,2:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3,4:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 5,6:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 7,8:
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_TCP_SIDE_CORNER_BOT,GRP_MECH_TCP_SIDE_CORNER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CORNER OF THE FIXED PLATE
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            TEST PickOri
+            CASE 1:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 2:
+                Add ToPoint.trans.x,ItemSize.Length-GripWidth;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3:
+                Add ToPoint.trans.x,ItemSize.Length;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 4:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width-GripWidth;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 5:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 6:
+                Add ToPoint.trans.x,GripWidth;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 7:
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 8:
+                Add ToPoint.trans.y,GripWidth;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_OPP_SIDE_CENTER_BOT,GRP_MECH_OPP_SIDE_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE MOVABLE PLATE
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            IF Box.LongSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+            IF Box.ShortSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            TEST PickOri
+            CASE 1,2:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 3,4:
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 5,6:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 7,8:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_OPP_SIDE_CORNER_BOT,GRP_MECH_OPP_SIDE_CORNER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CORNER OF THE MOVABLE PLATE
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            ItemSize:=GetPickUnitSize(LinkedType,ItemCnt);
+
+            TEST PickOri
+            CASE 1:
+                Add ToPoint.trans.x,GripWidth;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 2:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 3:
+                Add ToPoint.trans.y,GripWidth;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 4:
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 5:
+                Add ToPoint.trans.x,ItemSize.Length-GripWidth;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 6:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 7:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width-GripWidth;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 8:
+                Add ToPoint.trans.x,ItemSize.Length;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE MOVABLE PLATE
+            ! *******************************************************************
+
+            ! Get the size of the box combination to pick. Reference is the conveyor coord system
+            IF Box.LongSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,Box.LongSideLead);
+            IF Box.ShortSideLead>0 ItemSize:=GetPickUnitSize(LinkedType,Box.ShortSideLead);
+
+            TEST PickOri
+            CASE 1,2:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 5,6:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            ENDTEST
+        ENDTEST
+
+        ! Set the Z coordinate
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER,GRP_MECH_TCP_SIDE_CENTER_TOP,GRP_MECH_TCP_SIDE_CORNER_TOP,GRP_MECH_OPP_SIDE_CORNER_TOP,GRP_MECH_OPP_SIDE_CENTER_TOP,GRP_MECH_CENTER_TOP:
+            Add ToPoint.trans.z,Box.CorrHeight;
+        DEFAULT:
+            ! No calculation required
+        ENDTEST
+
+        ! Compensate for the location of the origin of the pick workobject
+        TEST LinkedType
+        CASE LONG_SIDE_LINKED:
+            TEST PickObjLocation
+            CASE PICK_OBJ_CENTER:
+                Add ToPoint.trans.y,-Box.CorrLength/2;
+            CASE PICK_OBJ_LEFTSIDE:
+                Add ToPoint.trans.y,-Box.CorrLength;
+            ENDTEST
+        CASE SHORT_SIDE_LINKED:
+            TEST PickObjLocation
+            CASE PICK_OBJ_CENTER:
+                Add ToPoint.trans.y,-Box.CorrWidth/2;
+            CASE PICK_OBJ_LEFTSIDE:
+                Add ToPoint.trans.y,-Box.CorrWidth;
+            ENDTEST
+        ENDTEST
+
+
+
+
+        IF NOT Present(AlternativeWObj) THEN
+            CalcRobConf ToPoint,Tool\WObj:=obFeeder;
+        ELSE
+            CalcRobConf ToPoint,Tool\WObj:=AlternativeWObj;
+        ENDIF
+    ENDPROC
+
+    FUNC num GetNextPickAmount(num PalletNr)
+        VAR num CycleNr;
+        VAR num StLayer;
+
+        IF PalletNr<1 RETURN -1;
+
+        CycleNr:=CycleCnt{PalletNr};
+
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+
+            IF PalletStatus{PalletNr}<>PALLET_RUNNING RETURN Pattern{StackConfig{StLayer}.PatternRef,StartCorner{PalletNr},1}.BoxCnt;
+
+            ! Get the layer number and cycle number for the next palletize cycle
+            Incr CycleNr;
+            IF CycleNr>StackConfig{LayerCnt{PalletNr}}.NrOfCycles THEN
+                IF LayerCnt{PalletNr}>=Pallet.NrOfLayers THEN
+                    RETURN Pattern{StackConfig{1}.PatternRef,StartCorner{PalletNr},1}.BoxCnt;
+                ELSE
+                    RETURN Pattern{StackConfig{LayerCnt{PalletNr}+1}.PatternRef,StartCorner{PalletNr},1}.BoxCnt;
+                ENDIF
+            ELSE
+                RETURN Pattern{StackConfig{LayerCnt{PalletNr}}.PatternRef,StartCorner{PalletNr},CycleNr}.BoxCnt;
+            ENDIF
+
+        CASE SYS_DEPALLETIZE:
+
+            IF PalletStatus{PalletNr}<>PALLET_RUNNING RETURN Pattern{StackConfig{StLayer}.PatternRef,StartCorner{PalletNr},StackConfig{StLayer}.NrOfCycles}.BoxCnt;
+
+            ! Get the layer number and cycle number for the next depalletize cycle
+            Decr CycleNr;
+            IF CycleNr<1 THEN
+                IF LayerCnt{PalletNr}<=1 THEN
+                    RETURN Pattern{StackConfig{Pallet.NrOfLayers}.PatternRef,StartCorner{PalletNr},StackConfig{StLayer}.NrOfCycles}.BoxCnt;
+                ELSE
+                    RETURN Pattern{StackConfig{LayerCnt{PalletNr}-1}.PatternRef,StartCorner{PalletNr},StackConfig{LayerCnt{PalletNr}-1}.NrOfCycles}.BoxCnt;
+                ENDIF
+            ELSE
+                RETURN Pattern{StackConfig{LayerCnt{PalletNr}}.PatternRef,StartCorner{PalletNr},CycleNr}.BoxCnt;
+            ENDIF
+        ENDTEST
+    ENDFUNC
+
+    FUNC robtarget GetPalletApproach(robtarget ToPoint\switch LowApproach\switch Slipsheet)
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+
+            RETURN GetPApproach(ToPoint\LowApproach?LowApproach\Slipsheet?Slipsheet);
+        CASE SYS_DEPALLETIZE,3:
+
+            IF Present(LowApproach) ErrWrite PickPlaceItem_Txt_C1,PickPlaceItem_Txt_C2\RL2:=PickPlaceItem_Txt_C3\RL3:=PickPlaceItem_Txt_C4;
+            RETURN GetPDepart(ToPoint\Slipsheet?Slipsheet);
+        ENDTEST
+    ENDFUNC
+
+    FUNC robtarget GetPalletDepart(robtarget ToPoint\switch Slipsheet)
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+            RETURN GetPDepart(ToPoint\Slipsheet?Slipsheet);
+        CASE SYS_DEPALLETIZE,3:
+            RETURN GetPApproach(ToPoint\Slipsheet?Slipsheet);
+        ENDTEST
+    ENDFUNC
+
+    PROC GetPalletItem(INOUT robtarget ToPoint,PERS tooldata Tool\PERS wobjdata AlternativeWObj)
+        VAR num PlaceOrient;
+        VAR num PickOrient;
+        VAR num ItemCnt;
+        VAR num LinkedType;
+        VAR num TheoreticalGripWidth;
+        !
+        VAR sizedata ItemSize;
+
+        ToPoint:=[[0,0,0],[1,0,0,0],[0,0,0,0],[9E9,9E9,9E9,9E9,9E9,9E9]];
+
+        ! Init variables for local use
+        LinkedType:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.LinkedType;
+        ItemCnt:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.BoxCnt;
+        PlaceOrient:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.PlaceOrient;
+        PickOrient:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.PickOrient;
+
+        ! Get the initial place position (Initial positions are calculated in InitLayer). The initial place position is the BoxStartX and BoxStartY coordinate
+        ToPoint.trans:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.Position;
+
+        ! Get the size of the box combination to place. Reference is the pallet coord system
+        ItemSize:=GetPlaceUnitSize(StackConfig{LayerCnt{TargetPallet}}.PatternRef,CycleCnt{TargetPallet},LinkedType,ItemCnt);
+
+        TEST GripType
+        CASE GRP_VACUUM_CENTER:
+            ! *******************************************************************
+            ! VACUUM GRIPPERS WITH THE TCP AT THE CENTER
+            ! *******************************************************************
+
+            Add ToPoint.trans.x,ItemSize.Length/2;
+            Add ToPoint.trans.y,ItemSize.Width/2;
+
+            TEST PlaceOrient
+            CASE 1:
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 2:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3:
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 4:
+                ToPoint.rot:=OrientZYX(270,0,180);
+            ENDTEST
+
+        CASE GRP_VACUUM_CORNER:
+            ! *******************************************************************
+            ! VACUUM GRIPPERS WITH THE TCP AT THE CORNER
+            ! *******************************************************************
+
+            TEST PlaceOrient
+            CASE 1:
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 2:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width/2;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 4:
+                Add ToPoint.trans.x,ItemSize.Length/2;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            ENDTEST
+        CASE GRP_MECH_TCP_SIDE_CENTER_BOT,GRP_MECH_TCP_SIDE_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE FIXED PLATE
+            ! *******************************************************************
+
+            IF Box.LongSideLead>0 TheoreticalGripWidth:=ItemCnt*Box.CorrWidth;
+            IF Box.ShortSideLead>0 TheoreticalGripWidth:=ItemCnt*Box.CorrLength;
+
+            TEST PlaceOrient
+            CASE 1,2:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                ELSE
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3,4:
+                Add ToPoint.trans.x,ItemSize.Length;
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ELSE
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 5,6:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                ELSE
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                ENDIF
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 7,8:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ELSE
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ENDIF
+                ToPoint.rot:=OrientZYX(0,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_TCP_SIDE_CORNER_BOT,GRP_MECH_TCP_SIDE_CORNER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CORNER OF THE FIXED PLATE
+            ! *******************************************************************
+
+            TEST PlaceOrient
+            CASE 1:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 2:
+                Add ToPoint.trans.x,ItemSize.Length-GripWidth;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3:
+                Add ToPoint.trans.x,ItemSize.Length;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 4:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width-GripWidth;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 5:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 6:
+                Add ToPoint.trans.x,GripWidth;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 7:
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 8:
+                Add ToPoint.trans.y,GripWidth;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_OPP_SIDE_CENTER_BOT,GRP_MECH_OPP_SIDE_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE MOVABLE PLATE
+            ! *******************************************************************
+
+            IF Box.LongSideLead>0 TheoreticalGripWidth:=ItemCnt*Box.CorrWidth;
+            IF Box.ShortSideLead>0 TheoreticalGripWidth:=ItemCnt*Box.CorrLength;
+
+            TEST PlaceOrient
+            CASE 1,2:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                ELSE
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                ENDIF
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 3,4:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ELSE
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ENDIF
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 5,6:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                ELSE
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 7,8:
+                Add ToPoint.trans.x,ItemSize.Length;
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ELSE
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(180,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_OPP_SIDE_CORNER_BOT,GRP_MECH_OPP_SIDE_CORNER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CORNER OF THE MOVABLE PLATE
+            ! *******************************************************************
+
+            TEST PlaceOrient
+            CASE 1:
+                Add ToPoint.trans.x,GripWidth;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 2:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 3:
+                Add ToPoint.trans.y,GripWidth;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 4:
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(0,0,180);
+            CASE 5:
+                Add ToPoint.trans.x,ItemSize.Length-GripWidth;
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 6:
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 7:
+                Add ToPoint.trans.x,ItemSize.Length;
+                Add ToPoint.trans.y,ItemSize.Width-GripWidth;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 8:
+                Add ToPoint.trans.x,ItemSize.Length;
+                ToPoint.rot:=OrientZYX(180,0,180);
+            ENDTEST
+
+        CASE GRP_MECH_CENTER_TOP:
+            ! *******************************************************************
+            ! MECHANICAL GRIPPER WITH THE TCP AT THE CENTER OF THE FIXED PLATE
+            ! *******************************************************************
+
+            TheoreticalGripWidth:=(Box.LongSideLead*Box.CorrWidth)+(Box.ShortSideLead*Box.CorrLength);
+
+            TEST PlaceOrient
+            CASE 1,2:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                    Add ToPoint.trans.y,ItemSize.Width/2;
+                ELSE
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                    Add ToPoint.trans.y,ItemSize.Width/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(90,0,180);
+            CASE 3,4:
+                Add ToPoint.trans.x,ItemSize.Length;
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,-ItemSize.Length/2;
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ELSE
+                    Add ToPoint.trans.x,-ItemSize.Length/2;
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ENDIF
+                ToPoint.rot:=OrientZYX(180,0,180);
+            CASE 5,6:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,TheoreticalGripWidth/2;
+                    Add ToPoint.trans.y,-ItemSize.Width/2;
+                ELSE
+                    Add ToPoint.trans.x,ItemSize.Length-(TheoreticalGripWidth/2);
+                    Add ToPoint.trans.y,-ItemSize.Width/2;
+                ENDIF
+                Add ToPoint.trans.y,ItemSize.Width;
+                ToPoint.rot:=OrientZYX(270,0,180);
+            CASE 7,8:
+                IF PickOrient=2 OR PickOrient=6 THEN
+                    Add ToPoint.trans.x,ItemSize.Length/2;
+                    Add ToPoint.trans.y,TheoreticalGripWidth/2;
+                ELSE
+                    Add ToPoint.trans.x,ItemSize.Length/2;
+                    Add ToPoint.trans.y,ItemSize.Width-(TheoreticalGripWidth/2);
+                ENDIF
+                ToPoint.rot:=OrientZYX(0,0,180);
+            ENDTEST
+        ENDTEST
+
+        ! Set the Z coordinate
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER,GRP_MECH_TCP_SIDE_CENTER_TOP,GRP_MECH_TCP_SIDE_CORNER_TOP,GRP_MECH_OPP_SIDE_CORNER_TOP,GRP_MECH_OPP_SIDE_CENTER_TOP,GRP_MECH_CENTER_TOP:
+            ToPoint.trans.z:=(LayerCnt{TargetPallet}*Box.CorrHeight)+(PlacedSlipsheets{TargetPallet}.Count*Slipsheet.Thickness)+Pallet.Height;
+        DEFAULT:
+            ToPoint.trans.z:=((LayerCnt{TargetPallet}-1)*Box.CorrHeight)+(PlacedSlipsheets{TargetPallet}.Count*Slipsheet.Thickness)+Pallet.Height;
+        ENDTEST
+
+
+
+
+        IF NOT Present(AlternativeWObj) THEN
+            CalcRobConf ToPoint,Tool\WObj:=obPallet;
+        ELSE
+            CalcRobConf ToPoint,Tool\WObj:=AlternativeWObj;
+        ENDIF
+    ENDPROC
+
+    FUNC bool GetSlipsheet()
+
+        ! Check if the new layer requires a slipsheet
+        IF IsNewLayer(TargetPallet) AND StackConfig{LayerCnt{TargetPallet}}.Slipsheet THEN
+            IF NOT PlacedSlipsheets{TargetPallet}.Placed THEN
+                Incr PlacedSlipsheets{TargetPallet}.Count;
+                RETURN TRUE;
+            ENDIF
+        ELSE
+            PlacedSlipsheets{TargetPallet}.Placed:=FALSE;
+        ENDIF
+
+        RETURN FALSE;
+    ERROR
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDFUNC
+
+    FUNC robtarget GetSlipsheetApproach(robtarget ToPoint)
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER:
+            RETURN Offs(ToPoint,SLIPSHEET_APPROACH_X,SLIPSHEET_APPROACH_Y,SlipSheetApprOffset);
+        DEFAULT:
+            RETURN RelTool(ToPoint,SLIPSHEET_APPROACH_X,SLIPSHEET_APPROACH_Y,-SlipSheetApprOffset);
+        ENDTEST
+    ENDFUNC
+
+    FUNC robtarget GetSlipsheetDepart(robtarget ToPoint)
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER:
+            RETURN Offs(ToPoint,SLIPSHEET_DEPART_X,SLIPSHEET_DEPART_Y,SlipSheetDepartOffset);
+        DEFAULT:
+            RETURN RelTool(ToPoint,SLIPSHEET_DEPART_X,SLIPSHEET_DEPART_Y,-SlipSheetDepartOffset);
+        ENDTEST
+    ENDFUNC
+
+    PROC GetSlipsheetPickItem(INOUT robtarget ToPoint,INOUT num ApproachHeight,INOUT num SearchStartHeight)
+
+        !ToPoint.trans:=[Slipsheet.Length/2,Slipsheet.Width/2,Slipsheet.Thickness];
+     ! Retire l'épaisseur de l'intercalaire en cours pour viser le plan de pose
+        ToPoint.trans:=[Pallet.Length/2,Pallet.Width/2,((LayerCnt{TargetPallet}-1)*Box.CorrHeight)+((PlacedSlipsheets{TargetPallet}.Count-1)*Slipsheet.Thickness)+Pallet.Height];
+     
+        ToPoint.rot:=[0,1,0,0];
+        ToPoint.robconf:=[0,0,0,0];
+        ToPoint.extax:=[9E9,9E9,9E9,9E9,9E9,9E9];
+
+        ApproachHeight:=Slipsheet.StackHeight;
+
+        SearchStartHeight:=Slipsheet.SearchHeight;
+    ENDPROC
+
+    PROC GetSlipsheetPlaceItem(INOUT robtarget ToPoint\switch RotateP1\switch RotateP2\switch RotateP3\switch RotateP4)
+
+        ToPoint.trans:=[Pallet.Length/2,Pallet.Width/2,((LayerCnt{TargetPallet}-1)*Box.CorrHeight)+(PlacedSlipsheets{TargetPallet}.Count*Slipsheet.Thickness)+Pallet.Height];
+        ToPoint.rot:=[0,1,0,0];
+
+        TEST TargetPallet
+        CASE 1:
+            IF Present(RotateP1) ToPoint.rot:=ToPoint.rot*[0,0,0,1];
+        CASE 2:
+            IF Present(RotateP2) ToPoint.rot:=ToPoint.rot*[0,0,0,1];
+        CASE 3:
+            IF Present(RotateP3) ToPoint.rot:=ToPoint.rot*[0,0,0,1];
+        CASE 4:
+            IF Present(RotateP4) ToPoint.rot:=ToPoint.rot*[0,0,0,1];
+        ENDTEST
+
+        ToPoint.robconf:=[0,0,0,0];
+        ToPoint.extax:=[9E9,9E9,9E9,9E9,9E9,9E9];
+    ENDPROC
+
+
+
+    PROC SetSlipsheetSearchHeight(num SearchHeight)
+        Slipsheet.SearchHeight:=SearchHeight;
+    ENDPROC
+
+    PROC SlipsheetCycleDone(bool SlipsheetPlaced)
+        VAR signaldo sdoPalletfull;
+
+        PlacedSlipsheets{TargetPallet}.Placed:=SlipsheetPlaced;
+
+        IF LayerCnt{TargetPallet}>Pallet.NrOfLayers AND SlipsheetPlaced THEN
+            PalletStatus{TargetPallet}:=PALLET_FULL;
+            GetDataVal "doPalletFull"+NumToStr(TargetPallet,0),sdoPalletfull;
+            Set sdoPalletfull;
+        ENDIF
+    ERROR
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDPROC
+
+    !************************************************************************************
+    !
+    ! INTERNAL PALLETIZING TEMPLATE ROUTINES
+    !
+    !************************************************************************************
+
+    LOCAL FUNC robtarget GetFApproach(robtarget ToPoint)
+       TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER:
+            RETURN Offs(ToPoint,FEEDER_APPROACH_X,FEEDER_APPROACH_Y,FeederApprOffset);
+        DEFAULT:
+            RETURN RelTool(ToPoint,FEEDER_APPROACH_X,FEEDER_APPROACH_Y,-FeederApprOffset-Box.CorrHeight);
+        ENDTEST
+    ENDFUNC
+
+    LOCAL FUNC robtarget GetFDepart(robtarget ToPoint)
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER:
+            RETURN Offs(ToPoint,FEEDER_DEPART_X,FEEDER_DEPART_Y,FeederDepartOffset);
+        DEFAULT:
+            RETURN RelTool(ToPoint,FEEDER_DEPART_X,FEEDER_DEPART_Y,-FeederDepartOffset);
+        ENDTEST
+    ENDFUNC
+
+    LOCAL FUNC robtarget GetPApproach(robtarget ToPoint\switch LowApproach\switch Slipsheet)
+        VAR num ZOffset;
+        VAR num ToPalletZ;
+        VAR num SafeOffs;
+        VAR num ApproachY;
+        !
+        VAR pose posePickPos;
+        VAR pose poseWorldPickPos;
+        VAR pose poseInvPalletWobj;
+        VAR pose posePickPosToPallet;
+
+        IF NOT Present(Slipsheet) THEN
+            TEST Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.ApproachDir
+            CASE 1:
+                ToPoint:=Offs(ToPoint,PALLET_APPROACH_X,0,0);
+            CASE 2:
+                ToPoint:=Offs(ToPoint,PALLET_APPROACH_X,PALLET_APPROACH_Y,0);
+            CASE 3:
+                ToPoint:=Offs(ToPoint,0,PALLET_APPROACH_Y,0);
+            CASE 4:
+                ToPoint:=Offs(ToPoint,-PALLET_APPROACH_X,PALLET_APPROACH_Y,0);
+            CASE 5:
+                ToPoint:=Offs(ToPoint,-PALLET_APPROACH_X,0,0);
+            CASE 6:
+                ToPoint:=Offs(ToPoint,-PALLET_APPROACH_X,-PALLET_APPROACH_Y,0);
+            CASE 7:
+                ToPoint:=Offs(ToPoint,0,-PALLET_APPROACH_Y,0);
+            CASE 8:
+                ToPoint:=Offs(ToPoint,PALLET_APPROACH_X,-PALLET_APPROACH_Y,0);
+            DEFAULT:
+                ToPoint:=Offs(ToPoint,0,0,0);
+            ENDTEST
+        ENDIF
+
+        ! Offset calculation for optimized top layer
+        IF OptTopLayer AND LayerCnt{TargetPallet}>=Pallet.NrOfLayers AND (AbsPalletHeight{TargetPallet}-AbsFeederHeight)>Box.CorrHeight AND (NOT Present(LowApproach)) THEN
+
+            ! Set approach position for optimized top layer. When 0 the offset is not used
+            IF OPT_TOP_X_SAFE{TargetPallet}>0 THEN
+                ToPoint.trans.x:=Pallet.Length+OPT_TOP_X_SAFE{TargetPallet};
+            ELSEIF OPT_TOP_X_SAFE{TargetPallet}<0 THEN
+                ToPoint.trans.x:=OPT_TOP_X_SAFE{TargetPallet};
+            ENDIF
+
+            IF OPT_TOP_Y_SAFE{TargetPallet}>0 THEN
+                ToPoint.trans.y:=Pallet.Width+OPT_TOP_Y_SAFE{TargetPallet};
+            ELSEIF OPT_TOP_Y_SAFE{TargetPallet}<0 THEN
+                ToPoint.trans.y:=OPT_TOP_Y_SAFE{TargetPallet};
+            ENDIF
+
+            RETURN Offs(ToPoint,0,0,LOW_APPROACH_OFFS);
+        ENDIF
+
+        ! Calculate low approach offset
+        IF Present(LowApproach) THEN
+            IF CycleCnt{TargetPallet}=1 OR OptTopLayer RETURN Offs(ToPoint,0,0,LOW_APPROACH_OFFS);
+
+            RETURN Offs(ToPoint,0,0,Box.CorrHeight/2);
+        ENDIF
+
+        ! Normal cycle
+
+        ErrWrite\W, ValToStr(PalletApprOffset) + " 000 " + ValToStr(ToPoint.trans.z),ValToStr(PalletApprOffset) + " 000 " + ValToStr(ToPoint.trans.z);
+        RETURN Offs(ToPoint,0,0,PalletApprOffset);
+    ERROR
+        IF TargetPallet=0 TRYNEXT;
+        ErrWrite Common_Header_1,PickPlaceItem_Txt_A1\RL2:=PickPlaceItem_Txt_A2\RL3:=PickPlaceItem_Txt_A3\RL4:=PickPlaceItem_Txt_A4+NumToStr(Dim(AbsPalletHeight,1),0)+PickPlaceItem_Txt_A5;
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDFUNC
+
+    LOCAL FUNC robtarget GetPDepart(robtarget ToPoint\switch Slipsheet)
+        IF Present(Slipsheet) RETURN Offs(ToPoint,0,0,PalletDepartOffset);
+        TEST GripType
+        CASE GRP_VACUUM_CENTER,GRP_VACUUM_CORNER:
+            RETURN Offs(ToPoint,PALLET_DEPART_X,PALLET_DEPART_Y,PalletDepartOffset);
+        DEFAULT:
+            RETURN RelTool(ToPoint,PALLET_DEPART_X,PALLET_DEPART_Y,-PalletDepartOffset-Box.CorrHeight);
+        ENDTEST
+    ENDFUNC
+
+    PROC PlaceCycleDone(bool BoxHandled\switch BoxLost\switch RangeCheck)
+        VAR num Child;
+        VAR num ItemCnt;
+        !
+        VAR signaldo sdoPalletfull;
+        VAR signaldo svoNewVirtualBoxes;
+
+        !Create new boxes (only for use in RobotStudio)
+        IF NOT RobOS() THEN
+            AliasIO voNewVirtualBoxes,svoNewVirtualBoxes;
+            PulseDO\high\PLength:=0.25,svoNewVirtualBoxes;
+        ENDIF
+
+        ! Box lost notification
+        IF Present(BoxLost) THEN
+            UpdateFPBoxStatus BOX_LOST;
+            RETURN ;
+        ENDIF
+
+        ! Box status remains unchanged if the box isn't handled.
+        IF (NOT BoxHandled) AND (NOT Present(RangeCheck)) RETURN ;
+
+        TEST Palletize{TargetPallet}
+        CASE SYS_PALLETIZE:
+            ! ***** Palletize cycle *****
+
+            ! Update the status of the current box
+            IF (NOT BoxHandled) AND Present(RangeCheck) THEN
+                UpdateFPBoxStatus BOX_LOST\NoUIUpdate;
+            ELSE
+                UpdateFPBoxStatus BOX_HANDLED\NoUIUpdate;
+            ENDIF
+
+            ! Update counters
+            Add BoxesOnPallet,Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.BoxCnt;
+            Incr CycleCnt{TargetPallet};
+
+            ! Check if the layer is finished
+            IF CycleCnt{TargetPallet}>StackConfig{LayerCnt{TargetPallet}}.NrOfCycles THEN
+                Incr LayerCnt{TargetPallet};
+                CycleCnt{TargetPallet}:=1;
+
+                IF LayerCnt{TargetPallet}>Pallet.NrOfLayers AND (NOT StackConfig{LayerCnt{TargetPallet}}.Slipsheet) THEN
+                    PalletStatus{TargetPallet}:=PALLET_FULL;
+                    GetDataVal "doPalletFull"+NumToStr(TargetPallet,0),sdoPalletfull;
+                    Set sdoPalletfull;
+                ENDIF
+                UpdateFPBoxStatus 0\NoWrite;
+            ELSE
+
+                ! Update status for the next box
+                UpdateFPBoxStatus BOX_HANDLING;
+            ENDIF
+
+
+        CASE SYS_DEPALLETIZE:
+            ! ***** Depalletize cycle *****
+
+            ! Box placed notification
+            IF (NOT BoxHandled) AND Present(RangeCheck) THEN
+                UpdateFPBoxStatus BOX_LOST\NoUIUpdate;
+            ELSE
+                UpdateFPBoxStatus BOX_NOT_HANDLED\NoUIUpdate;
+            ENDIF
+
+            ! Update counters
+            Add BoxesOnPallet,-Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.BoxCnt;
+            Decr CycleCnt{TargetPallet};
+
+            ! Check if the layer is finished
+            IF CycleCnt{TargetPallet}<1 THEN
+                IF LayerCnt{TargetPallet}<=1 THEN
+                    PalletStatus{TargetPallet}:=PALLET_FULL;
+                    GetDataVal "doPalletFull"+NumToStr(TargetPallet,0),sdoPalletfull;
+                    Set sdoPalletfull;
+                ELSE
+                    Decr LayerCnt{TargetPallet};
+                    CycleCnt{TargetPallet}:=StackConfig{LayerCnt{TargetPallet}}.NrOfCycles;
+                ENDIF
+                UpdateFPBoxStatus 0\NoWrite;
+            ELSE
+
+                ! Update status for the next box
+                UpdateFPBoxStatus BOX_HANDLING;
+            ENDIF
+
+        CASE 3:
+            ! ***** Depalletize cycle without FP update*****
+
+            ! Box placed notification
+            IF BoxHandled Decr CycleCnt{TargetPallet};
+
+            ! Check if the layer is finished
+            IF CycleCnt{TargetPallet}<1 THEN
+                IF LayerCnt{TargetPallet}<=1 THEN
+                    PalletStatus{TargetPallet}:=PALLET_FULL;
+                    GetDataVal "doPalletFull"+NumToStr(TargetPallet,0),sdoPalletfull;
+                    Set sdoPalletfull;
+                ELSE
+                    Decr LayerCnt{TargetPallet};
+                    CycleCnt{TargetPallet}:=StackConfig{LayerCnt{TargetPallet}}.NrOfCycles;
+                ENDIF
+            ENDIF
+        ENDTEST
+    ENDPROC
+
+    LOCAL FUNC sizedata GetPickUnitSize(num LinkedType,num ItemCnt)
+
+        TEST LinkedType
+        CASE LONG_SIDE_LINKED:
+            RETURN [Box.CorrWidth*ItemCnt,Box.CorrLength,0,0];
+        CASE SHORT_SIDE_LINKED:
+            RETURN [Box.CorrLength*ItemCnt,Box.CorrWidth,0,0];
+        ENDTEST
+
+        ! Illegal value
+        RETURN [0,0,0,0];
+    ENDFUNC
+
+    LOCAL FUNC sizedata GetPlaceUnitSize(num PatternRef,num BoxCnt,num LinkedType,num ItemCnt)
+
+        ! Calculate the size of the box combination relative to the direction of the pallet coordinate system
+        TEST Pattern{PatternRef,StartCorner{TargetPallet},BoxCnt}.Formula.BoxOrient
+        CASE "H":
+            TEST LinkedType
+            CASE LONG_SIDE_LINKED:
+                RETURN [Box.CorrLength,Box.CorrWidth*ItemCnt,0,0];
+            CASE SHORT_SIDE_LINKED:
+                RETURN [Box.CorrLength*ItemCnt,Box.CorrWidth,0,0];
+            ENDTEST
+        CASE "V":
+            TEST LinkedType
+            CASE LONG_SIDE_LINKED:
+                RETURN [Box.CorrWidth*ItemCnt,Box.CorrLength,0,0];
+            CASE SHORT_SIDE_LINKED:
+                RETURN [Box.CorrWidth,Box.CorrLength*ItemCnt,0,0];
+            ENDTEST
+        ENDTEST
+
+        ! Illegal value
+        RETURN [0,0,0,0];
+    ENDFUNC
+
+    PROC ProductionStatusCheck()
+        IF ProductionStatus=STATUS_END_CYCLE THEN
+            StopEndOfCycle;
+            ProductionStatus:=STATUS_PRODUCTION;
+        ENDIF
+
+        IF ProductionStatus=STATUS_END_PALLET AND PalletStatus{TargetPallet}=PALLET_FULL THEN
+            StopEndOfPallet;
+            ProductionStatus:=STATUS_PRODUCTION;
+        ENDIF
+    ENDPROC
+
+    PROC HomeRun()
+        VAR robtarget pCurrent;
+
+        UpdateProductionStatus\BeforeMoveHome;
+
+        IF ProductionStatus<>STATUS_PRODUCTION_AT_HOME THEN
+            StopMove;
+            ClearPath;
+            StartMove;
+
+            MoveHome;
+        ENDIF
+
+        UpdateProductionStatus\AfterMoveHome;
+
+        IF AppCommand=CMD_HOME_RUN OR
+            ProductionStatus=STATUS_START_CYCLE_HOMERUN OR
+            ProductionStatus=STATUS_PRODUCTION_HOMERUN OR
+            ProductionStatus=STATUS_END_CYCLE_HOMERUN OR
+            ProductionStatus=STATUS_END_PALLET_HOMERUN THEN
+
+            AppCommand:=CMD_NONE;
+            StopAfterHomeRun;
+            ProductionStatus:=STATUS_PRODUCTION;
+        ENDIF
+    ENDPROC
+
+    LOCAL PROC CalcRobConf(INOUT robtarget ToPoint,PERS tooldata Tool\PERS wobjdata WObj\switch FullRangeAx6)
+        VAR confdata ActConf;
+        !
+        VAR num Cf1;
+        VAR num RotAx4;
+        VAR num RotAx6;
+        VAR num RotAx4Min:=9E9;
+        VAR num RotAx6Min:=9E9;
+        VAR num ValidCfgStep;
+        VAR num SelectedCfg;
+        !
+        VAR wristdata WristAngles{20};
+        !
+        VAR jointtarget ToJoint;
+
+        ! Get the cfg of axis 1
+        Cf1:=GetCf1(ToPoint,Tool\WObj?WObj);
+
+        ! Find all valid configs for ToPoint, with cfx either at 0 or at 1.
+        FOR i FROM 1 TO Dim(CfList,1) DO
+            CfList{i}.cf1:=Cf1;
+
+            ToJoint:=CalcJointT([ToPoint.trans,ToPoint.rot,CfList{i},[9E9,9E9,9E9,9E9,9E9,9E9]],Tool\WObj?WObj);
+
+            IF Abs(ToJoint.robax.rax_4)<0.0002 ToJoint.robax.rax_4:=0;
+            IF Abs(ToJoint.robax.rax_6)<0.0002 ToJoint.robax.rax_6:=0;
+
+            ActConf:=[Trunc(ToJoint.robax.rax_1/90),Trunc(ToJoint.robax.rax_4/90),Trunc(ToJoint.robax.rax_6/90),0];
+
+            IF ToJoint.robax.rax_1<0 Add ActConf.cf1,-1;
+            IF ToJoint.robax.rax_4<0 Add ActConf.cf4,-1;
+            IF ToJoint.robax.rax_6<0 Add ActConf.cf6,-1;
+            IF ToJoint.robax.rax_5<0 ActConf.cfx:=1;
+
+            IF ActConf.cf4=CfList{i}.cf4 AND ActConf.cf6=CfList{i}.cf6 AND ActConf.cfx=CfList{i}.cfx THEN
+                Incr ValidCfgStep;
+                WristAngles{ValidCfgStep}:=[ToJoint.robax,ActConf];
+            ENDIF
+        ENDFOR
+
+        IF ValidCfgStep<=0 THEN
+            IF Dim(CfList,1)>2 THEN
+                ErrWrite "Config error","No valid configurations found";
+                Stop;
+                ExitCycle;
+            ELSE
+                ErrWrite\W,"Config warning","Inconsistent configuration";
+            ENDIF
+        ENDIF
+
+        IF StartJoint.robax.rax_1=9E9 THEN
+
+            ! Find the solution with the lowest angle for axis 4
+            FOR i FROM 1 TO ValidCfgStep DO
+                IF Abs(WristAngles{i}.rj.rax_4)<RotAx4Min THEN
+                    RotAx4Min:=Abs(WristAngles{i}.rj.rax_4);
+                    ToPoint.robconf:=WristAngles{i}.Cfg;
+                    ToJoint.robax:=WristAngles{i}.rj;
+                ENDIF
+            ENDFOR
+        ELSE
+
+            ! Find the solution that requires the least rotation of axis 4 and 6
+            FOR i FROM 1 TO ValidCfgStep DO
+                RotAx4:=WristAngles{i}.rj.rax_4-StartJoint.robax.rax_4;
+                RotAx6:=WristAngles{i}.rj.rax_6-StartJoint.robax.rax_6;
+
+                IF Abs(RotAx4+RotAx6)<Abs(RotAx4Min+RotAx6Min) AND (Abs(RotAx4)+Abs(RotAx6))<(Abs(RotAx4Min)+Abs(RotAx6Min)) THEN
+                    RotAx4Min:=Abs(RotAx4);
+                    RotAx6Min:=Abs(RotAx6);
+                    ToPoint.robconf:=WristAngles{i}.Cfg;
+                    ToJoint.robax:=WristAngles{i}.rj;
+                ENDIF
+            ENDFOR
+        ENDIF
+
+        StartJoint:=ToJoint;
+
+        ! ***** Full range of axis 6 not implemented yet *****
+        RETURN ;
+
+        IF NOT Present(FullRangeAx6) RETURN ;
+
+        ! Extending the movement of axis 6 to reduce helicoptering
+        RotAx6:=ToJoint.robax.rax_6-PrevRobJoint.robax.rax_6;
+        IF Abs(RotAx6)>180 THEN
+            IF RotAx6<0 AND (ToJoint.robax.rax_6+360)<270 Add ToJoint.robax.rax_6,360;
+            IF RotAx6>0 AND (ToJoint.robax.rax_6-360)>-270 Add ToJoint.robax.rax_6,-360;
+        ENDIF
+
+        PrevRobJoint.robax:=ToJoint.robax;
+
+        ! Calculate cf6
+        ToPoint.robconf.cf6:=Trunc(ToJoint.robax.rax_6/90);
+        IF ToJoint.robax.rax_6<0 Add ToPoint.robconf.cf6,-1;
+    ERROR
+        SkipWarn;
+
+        TEST ERRNO
+        CASE ERR_OUTSIDE_REACH:
+            ToPoint.robconf:=[0,0,0,0];
+            RETURN ;
+        DEFAULT:
+            ActConf:=[-99,-99,-99,-99];
+            TRYNEXT;
+        ENDTEST
+    ENDPROC
+
+    LOCAL FUNC num GetCf1(robtarget ToPoint,PERS tooldata Tool\PERS wobjdata WObj)
+        VAR pose PoseBase;
+        !
+        VAR num AngleAxis1;
+
+        ! Calculate the angle of axis 1 and set the configuration
+        IF Present(WObj) THEN
+            PoseBase:=PoseMult(PoseMult(PoseMult(WObj.uframe,WObj.oframe),[ToPoint.trans,ToPoint.rot]),PoseInv(Tool.tframe));
+        ELSE
+            PoseBase:=PoseMult([ToPoint.trans,ToPoint.rot],PoseInv(Tool.tframe));
+        ENDIF
+        AngleAxis1:=ATan2(PoseBase.trans.y,PoseBase.trans.x);
+
+        IF AngleAxis1<0 RETURN Trunc(AngleAxis1/90)-1;
+        RETURN Trunc(AngleAxis1/90);
+    ENDFUNC
+ENDMODULE

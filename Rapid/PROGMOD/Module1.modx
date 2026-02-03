@@ -1,0 +1,10 @@
+MODULE Module1
+    CONST robtarget pPickSlipsheet:=[[-24.960443101,-818.806,-301.95318584],[0,-0.707106781,0.707106781,0],[-2,-1,1,1],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    CONST robtarget pPickTarget:=[[1127.774,628.478,91.194],[0,0,1,0],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    CONST robtarget pWC:=[[1127.774,628.478,91.194],[0,0,1,0],[0,-1,0,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
+    PROC Path_10()
+        MoveL pPickSlipsheet,v1000,z100,MonOutil\WObj:=wobj0;
+        MoveL pPickTarget,v1000,z100,MonOutil\WObj:=wobj0;
+        MoveL pWC,v1000,z100,MonOutil111\WObj:=wobj0;
+    ENDPROC
+ENDMODULE

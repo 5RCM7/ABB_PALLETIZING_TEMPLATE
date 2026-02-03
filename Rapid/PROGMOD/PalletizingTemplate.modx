@@ -1,0 +1,93 @@
+MODULE PalletizingTemplate
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2025.001                                                              **
+    !** Date:    22-03-2025                                                            **
+    !**                                                                                **
+    !** Module:  PalletizingTemplate                                                   **
+    !**                                                                                **
+    !************************************************************************************
+    CONST robtarget pHome:=[[900,50,850],[0,0.707106781,0.707106781,0],[0,0,1,0],[9E9,9E9,9E9,9E9,9E9,9E9]];
+
+    PROC main()
+
+        ! Main initialisation
+        InitAll;
+
+        ! Read the recipe file (file name selected from the FP app) and the corresponding tune data file (if exists)
+        OpenRecipe RecipeName;
+
+        ! Move to the home position
+        HomeRun;
+
+        ! Initialise the gripper
+        InitVacuum;
+
+        WHILE TRUE DO
+            PickPlaceSeq;
+
+            ! Update the motion parameters if changed from the tuning page of the FP app
+            UpdateMotionParams;
+
+            ! Check if a stop at end of the cycle or at end of the pallet is requested
+            ProductionStatusCheck;
+        ENDWHILE
+    ERROR (ERR_HOMERUN)
+
+        HomeRun;
+
+        ResetRetryCount;
+        RETRY;
+    ENDPROC
+
+    PROC MoveHome()
+        VAR robtarget pCurrent;
+        !
+        VAR num HomeRadius;
+        VAR num CurrRadius;
+        VAR num Factor;
+
+        ! Homerun functionality can be modified if required
+
+        SingArea\LockAxis4;
+
+        ! Move 100 mm up from the current robot position
+        pCurrent:=CRobT(\Tool:=tVacuum\WObj:=wobj0);
+        MoveL Offs(pCurrent,0,0,100),v500,z10,tVacuum;
+
+        ! Set the X and Y to the same radius as the home posiotion
+        HomeRadius:=Sqrt(Pow(pHome.trans.x,2)+Pow(pHome.trans.y,2));
+        CurrRadius:=Sqrt(Pow(pCurrent.trans.x,2)+Pow(pCurrent.trans.y,2));
+        IF CurrRadius>HomeRadius THEN
+            Factor:=HomeRadius/CurrRadius;
+            pCurrent.trans.x:=pCurrent.trans.x*Factor;
+            pCurrent.trans.y:=pCurrent.trans.y*Factor;
+        ENDIF
+
+        ! Set the z coordinate to the same value as the home position.
+        pCurrent.trans.z:=pHome.trans.z;
+        MoveJ pCurrent,v500,z10,tVacuum;
+        MoveJ pHome,v5000,fine,tVacuum;
+
+
+    ENDPROC
+
+    PROC StopAfterHomeRun()
+        ! This procedure is called after a home run is requested
+        Stop;
+    ENDPROC
+
+    PROC StopEndOfCycle()
+        ! This procedure is called when the robot has finished the curent cycle
+        Stop;
+    ENDPROC
+
+    PROC StopEndOfPallet()
+        ! This procedure is called when the robot has finished the curent pallet
+        Stop;
+    ENDPROC
+ENDMODULE

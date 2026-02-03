@@ -1,0 +1,614 @@
+MODULE PatternCalc(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.007                                                              **
+    !** Date:    07-05-2025                                                            **
+    !**                                                                                **
+    !** Module:  PatternCalc                                                           **
+    !**                                                                                **
+    !************************************************************************************
+
+    RECORD boxgroupdata
+        num Coord;
+        num Ref;
+        string Ori;
+    ENDRECORD
+
+    TASK PERS wobjdata obPallet:=[FALSE,TRUE,"",[[-600,350,-1000],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    !
+    LOCAL PERS num ActivePallet:=1;
+    LOCAL PERS num BoxGroupCnt{5}:=[0,0,0,0,0];
+    !
+    LOCAL PERS num TempLayerStatus{60}:=[
+        3,3,3,3,3,3,3,3,3,3,
+        3,3,3,3,3,3,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1
+    ];
+    !
+    LOCAL PERS bool OptTopLayer:=FALSE;
+    !
+    LOCAL PERS boxgroupdata BoxXGroup{5,10}:=
+    [
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]]
+    ];
+    LOCAL PERS boxgroupdata BoxYGroup{5,10}:=
+    [
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]],
+        [[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""],[0,0,""]]
+    ];
+    TASK PERS wobjdata obSheetMag:=[FALSE,TRUE,"",[[900,-50,-300],[0.707107,-0.000000015,0.000000085,-0.707107]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata obFeeder:=[FALSE,TRUE,"",[[957.5,1074,700],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+
+    !************************************************************************************
+    !
+    ! GLOBAL PALLETIZING TEMPLATE INSTRUCTIONs
+    !
+    !************************************************************************************
+
+    FUNC num GetActivePallet()
+        VAR num j;
+
+        ! Determine the palletzing cycle
+        FOR i FROM 1 TO Dim(PalletStatus,1) DO
+            IF PalletStatus{i}=PALLET_RUNNING AND AllowAppRelease{i}<>0 THEN
+                ActivePallet:=i;
+                RETURN ActivePallet;
+            ENDIF
+        ENDFOR
+
+        ! No pallets are running find the next empty pallet
+        j:=ActivePallet+1;
+        FOR i FROM 1 TO Dim(PalletStatus,1) DO
+            IF j>Dim(PalletStatus,1) j:=1;
+            IF PalletStatus{j}=PALLET_NEW THEN
+                ActivePallet:=j;
+                RETURN ActivePallet;
+            ENDIF
+            Incr j;
+        ENDFOR
+
+        ! No pallets are available
+        RETURN 0;
+    ENDFUNC
+
+    PROC SetPalletizeCycle(num PalletNr,num FeederNr\switch OptimizeTopLayer)
+        VAR string TempLayerFormula{40};
+        !
+        VAR bool NewLayer;
+        !
+        VAR num TempBoxParents{40};
+        !
+        VAR childdata Childeren;
+        !
+        VAR signaldo svoClearVirtualPallet;
+        VAR signaldo svoNewVirtualBoxes;
+
+        ! Check if pallet number is correct. Pallet 0 is valid as this is regarded as no pallet available.
+        IF PalletNr<0 OR PalletNr>Dim(obPalletArray,1) RAISE ERR_INVALID_PALLET;
+        IF FeederNr<0 OR FeederNr>Dim(obFeederArray,1) RAISE ERR_INVALID_FEEDER;
+
+        ! Check if the requested pallet is available (i.e. empty or running)
+        IF PalletNr=0 OR Palletize{PalletNr}=SYS_NOT_USED RAISE ERR_NO_PALLET_AVAILABLE;
+        IF PalletStatus{PalletNr}<>PALLET_NEW AND PalletStatus{PalletNr}<>PALLET_RUNNING RAISE ERR_NO_ACTIVE_PALLET_PRESENT;
+
+        ! Set the target pallet
+        TargetPallet:=PalletNr;
+        TargetFeeder:=FeederNr;
+
+        ! Update the workobjects for the movement in the pick and place cycle
+        obFeeder:=obFeederArray{TargetFeeder};
+        obPallet:=obPalletArray{TargetPallet};
+
+        ! Update Payload
+        BoxLoad:=[Box.Weight,[0,0,Box.Height/2],[1,0,0,0],0,0,0];
+
+        IF PalletStatus{PalletNr}=PALLET_NEW THEN
+            ! Initialise the new pallet
+            IF Palletize{TargetPallet}=SYS_PALLETIZE OR StartLayer{TargetPallet}<>1 OR StartCycle{TargetPallet}<>1 THEN
+                InitPallet TargetPallet,StartLayer{TargetPallet},StartCycle{TargetPallet};
+            ELSE
+                InitPallet TargetPallet,Pallet.NrOfLayers,StackConfig{Pallet.NrOfLayers}.NrOfCycles;
+            ENDIF
+
+            ! Set the pallet to the running status
+            PalletStatus{TargetPallet}:=PALLET_RUNNING;
+            ProductionStatus:=STATUS_PRODUCTION;
+
+            RangeCheck StartLayer{TargetPallet},1,Pallet.NrOfLayers,Common_Header_1,PatternCalc_Txt_B1+NumToStr(Pallet.NrOfLayers,0);
+            RangeCheck StartCycle{TargetPallet},1,StackConfig{StartLayer{TargetPallet}}.NrOfBoxes,Common_Header_1,PatternCalc_Txt_C1+NumToStr(StackConfig{StartLayer{TargetPallet}}.NrOfBoxes,0);
+
+            ! Init box counters
+            TEST Palletize{TargetPallet}
+            CASE SYS_PALLETIZE:
+                BoxesOnPallet:=0;
+
+                IF StartLayer{TargetPallet}>1 THEN
+                    FOR i FROM 1 TO StartLayer{TargetPallet}-1 DO
+                        Add BoxesOnPallet,StackConfig{i}.NrOfBoxes;
+                    ENDFOR
+                ENDIF
+                IF StartCycle{TargetPallet}>1 THEN
+                    FOR i FROM 1 TO StartCycle{TargetPallet}-1 DO
+                        Add BoxesOnPallet,Pattern{TargetPallet,StartCorner{TargetPallet},i}.BoxCnt;
+                    ENDFOR
+                ENDIF
+
+            CASE SYS_DEPALLETIZE:
+                BoxesOnPallet:=BoxesTotal;
+
+                IF StartLayer{TargetPallet}>1 AND StartLayer{TargetPallet}<Pallet.NrOfLayers THEN
+                    FOR i FROM StartLayer{TargetPallet}+1 TO Pallet.NrOfLayers DO
+                        Add BoxesOnPallet,-StackConfig{i}.NrOfBoxes;
+                    ENDFOR
+                ENDIF
+                IF StartCycle{TargetPallet}>1 AND StartCycle{TargetPallet}<StackConfig{StartLayer{TargetPallet}}.NrOfBoxes THEN
+                    FOR i FROM StartCycle{TargetPallet}+1 TO StackConfig{StartLayer{TargetPallet}}.NrOfBoxes DO
+                        Add BoxesOnPallet,-Pattern{TargetPallet,StartCorner{TargetPallet},i}.BoxCnt;
+                    ENDFOR
+                ENDIF
+
+            ENDTEST
+
+            ! Clear virtual pallet stack and create new boxes (only for use in RobotStudio)
+            IF NOT RobOS() THEN
+                AliasIO voClearVirtualPallet,svoClearVirtualPallet;
+                AliasIO voNewVirtualBoxes,svoNewVirtualBoxes;
+                PulseDO\high\PLength:=0.25,svoClearVirtualPallet;
+                PulseDO\high\PLength:=0.25,svoNewVirtualBoxes;
+            ENDIF
+        ENDIF
+
+        NewLayer:=IsNewLayer(TargetPallet) OR StartLayer{TargetPallet}<>1 OR StartCycle{TargetPallet}<>1;
+        IF NewLayer UpdateProductDimensions;
+
+
+        AbsPalletHeight{TargetPallet}:=obPallet.uframe.trans.z+obPallet.oframe.trans.z+Pallet.Height+(LayerCnt{TargetPallet}*Box.CorrHeight)+(Slipsheet.Thickness*PlacedSlipsheets{PalletNr}.Count);
+        AbsFeederHeight:=obFeeder.uframe.trans.z+obFeeder.oframe.trans.z+Box.CorrHeight;
+        AbsSlipSheetHeight:=obSheetMag.uframe.trans.z+obSheetMag.oframe.trans.z+Slipsheet.Thickness;
+
+
+
+
+        IF NewLayer THEN
+            ActLayer:=LayerCnt{TargetPallet};
+
+            ! Get the start corner for the new layer
+            SetStartCorner TargetPallet;
+
+            ! Setup the initial coordinates for the new layer
+            InitLayer StackConfig{LayerCnt{TargetPallet}}.PatternRef;
+
+            ! Update the data for the FP app
+            IF Palletize{TargetPallet}<>3 THEN
+                InitFPLayerStatus;
+                ActLayerName:=StackConfig{LayerCnt{TargetPallet}}.Name;
+
+                UpdateFPBoxStatus BOX_HANDLING\StartCycle:=StartCycle{TargetPallet}\NewLayer;
+            ENDIF
+        ENDIF
+
+        StartLayer{TargetPallet}:=1;
+        StartCycle{TargetPallet}:=1;
+
+        CalcOffsets\OptimizeTopLayer?OptimizeTopLayer;
+    ERROR
+        TEST ERRNO
+        CASE ERR_INVALID_PALLET:
+            ErrWrite Common_Header_1,PatternCalc_Txt_A1\RL2:=PatternCalc_Txt_A2\RL3:=PatternCalc_Txt_A3+NumToStr(Dim(obPalletArray,1),0);
+        ENDTEST
+
+        ! Raise all errors to the calling routine
+        RAISE ;
+    ENDPROC
+
+    !************************************************************************************
+    !
+    ! INTERNAL PALLETIZING TEMPLATE ROUTINES
+    !
+    !************************************************************************************
+
+    FUNC bool IsNewLayer(num PalletNr)
+
+        ! Check if a new layer or new pallet is started for either palletizing or depalletizing.
+        RETURN (CycleCnt{PalletNr}=1 AND Palletize{PalletNr}=SYS_PALLETIZE) OR (CycleCnt{PalletNr}=StackConfig{LayerCnt{PalletNr}}.NrOfCycles AND Palletize{PalletNr}>=SYS_DEPALLETIZE);
+    ENDFUNC
+
+    LOCAL PROC SetStartCorner(num PalletNr)
+        IF AbsPalletHeight{PalletNr}>(AbsFeederHeight+Box.CorrHeight) OR LayerCnt{PalletNr}=Pallet.NrOfLayers THEN
+            StartCorner{PalletNr}:=CORNER_UPPER_LAYERS{PalletNr};
+        ELSE
+            StartCorner{PalletNr}:=CORNER_LOWER_LAYERS{PalletNr};
+        ENDIF
+    ENDPROC
+
+    LOCAL PROC InitLayer(num PatternRef)
+        VAR num XSpace;
+        VAR num YSpace;
+        VAR num GroupRef;
+        VAR num ClusterSizeX;
+        VAR num ClusterSizeY;
+        !
+        VAR bool Finished;
+        !
+        VAR boxgroupdata TempBoxGroup;
+
+        BoxGroupCnt:=[0,0,0,0,0];
+
+        ! Calculate the size of the pattern
+        PatternSize:=CalcPatternSize(PatternRef);
+
+        ! Calculate place position
+        FOR i FROM 1 TO StackConfig{LayerCnt{TargetPallet}}.NrOfBoxes DO
+
+            ! Calculate initial place position based on the start corner of the box
+            Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.x:=(Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.XCalcL*Box.CorrLength)+(Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.XCalcW*Box.CorrWidth);
+            Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.y:=(Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.YCalcL*Box.CorrLength)+(Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.YCalcW*Box.CorrWidth);
+
+            ! Center the pattern on the pallet
+            Add Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.x,((Pallet.Length-PatternSize.Length)/2)-PatternSize.XOffset;
+            Add Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.y,((Pallet.Width-PatternSize.Width)/2)-PatternSize.YOffset;
+
+            ! Check if the box is part of a cluster
+            GroupRef:=Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.Group;
+            IF GroupRef>0 THEN
+                Incr BoxGroupCnt{GroupRef};
+                BoxXGroup{GroupRef,BoxGroupCnt{GroupRef}}:=[Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.x,i,Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.BoxOrient];
+                BoxYGroup{GroupRef,BoxGroupCnt{GroupRef}}:=[Pattern{PatternRef,StartCorner{TargetPallet},i}.Position.y,i,Pattern{PatternRef,StartCorner{TargetPallet},i}.Formula.BoxOrient];
+            ENDIF
+        ENDFOR
+
+        ! Calculate box positions for the clusters
+        FOR i FROM 1 TO Dim(BoxGroupCnt,1) DO
+            IF BoxGroupCnt{i}>2 THEN
+                Finished:=FALSE;
+
+                ! Bubble sort box groups
+                WHILE NOT Finished DO
+                    Finished:=TRUE;
+                    FOR j FROM 2 TO BoxGroupCnt{i} DO
+                        IF BoxXGroup{i,j-1}.Coord>BoxXGroup{i,j}.Coord THEN
+                            TempBoxGroup:=BoxXGroup{i,j};
+                            BoxXGroup{i,j}:=BoxXGroup{i,j-1};
+                            BoxXGroup{i,j-1}:=TempBoxGroup;
+                            Finished:=FALSE;
+                        ENDIF
+                        IF BoxYGroup{i,j-1}.Coord>BoxYGroup{i,j}.Coord THEN
+                            TempBoxGroup:=BoxYGroup{i,j};
+                            BoxYGroup{i,j}:=BoxYGroup{i,j-1};
+                            BoxYGroup{i,j-1}:=TempBoxGroup;
+                            Finished:=FALSE;
+                        ENDIF
+                    ENDFOR
+                ENDWHILE
+
+                ! Calculate the total length of all boxes in a cluster (except the last box)
+                ClusterSizeX:=0;
+                ClusterSizeY:=0;
+                FOR j FROM 1 TO BoxGroupCnt{i}-1 DO
+                    IF BoxXGroup{i,j}.Ori="H" Add ClusterSizeX,Box.Length;
+                    IF BoxXGroup{i,j}.Ori="V" Add ClusterSizeX,Box.Width;
+                    IF BoxYGroup{i,j}.Ori="H" Add ClusterSizeY,Box.Width;
+                    IF BoxYGroup{i,j}.Ori="V" Add ClusterSizeY,Box.Length;
+                ENDFOR
+
+                ! Calculate the spacing between the boxes
+                XSpace:=((BoxXGroup{i,BoxGroupCnt{i}}.Coord-BoxXGroup{i,1}.Coord-ClusterSizeX)/(BoxGroupCnt{i}-1));
+                YSpace:=((BoxYGroup{i,BoxGroupCnt{i}}.Coord-BoxYGroup{i,1}.Coord-ClusterSizeY)/(BoxGroupCnt{i}-1));
+
+                ! Update the place positions
+                FOR j FROM 2 TO BoxGroupCnt{i}-1 DO
+                    IF XSpace>0 THEN
+                        IF BoxXGroup{i,j-1}.Ori="H" Pattern{PatternRef,StartCorner{TargetPallet},BoxXGroup{i,j}.Ref}.Position.x:=Pattern{PatternRef,StartCorner{TargetPallet},BoxXGroup{i,j-1}.Ref}.Position.x+Box.Length+XSpace;
+                        IF BoxXGroup{i,j-1}.Ori="V" Pattern{PatternRef,StartCorner{TargetPallet},BoxXGroup{i,j}.Ref}.Position.x:=Pattern{PatternRef,StartCorner{TargetPallet},BoxXGroup{i,j-1}.Ref}.Position.x+Box.Width+XSpace;
+                    ENDIF
+                    IF YSpace>0 THEN
+                        IF BoxYGroup{i,j-1}.Ori="H" Pattern{PatternRef,StartCorner{TargetPallet},BoxYGroup{i,j}.Ref}.Position.y:=Pattern{PatternRef,StartCorner{TargetPallet},BoxYGroup{i,j-1}.Ref}.Position.y+Box.Width+YSpace;
+                        IF BoxYGroup{i,j-1}.Ori="V" Pattern{PatternRef,StartCorner{TargetPallet},BoxYGroup{i,j}.Ref}.Position.y:=Pattern{PatternRef,StartCorner{TargetPallet},BoxYGroup{i,j-1}.Ref}.Position.y+Box.Length+YSpace;
+                    ENDIF
+                ENDFOR
+            ENDIF
+        ENDFOR
+    ENDPROC
+
+    LOCAL FUNC sizedata CalcPatternSize(num PatternRef)
+        VAR num XPos;
+        VAR num YPos;
+        VAR num XStart:=9E9;
+        VAR num XEnd;
+        VAR num XOffset:=9E9;
+        VAR num YStart:=9E9;
+        VAR num YEnd;
+        VAR num YOffset:=9E9;
+
+        FOR i FROM 1 TO StackConfig{LayerCnt{TargetPallet}}.NrOfBoxes DO
+            ! Calc the pattern size. Pattern size is calculated for start corner 1 as the pattern size is identical for all start corners
+            XPos:=(Pattern{PatternRef,1,i}.Formula.XCalcL*Box.CorrLength)+(Pattern{PatternRef,1,i}.Formula.XCalcW*Box.CorrWidth);
+            YPos:=(Pattern{PatternRef,1,i}.Formula.YCalcL*Box.CorrLength)+(Pattern{PatternRef,1,i}.Formula.YCalcW*Box.CorrWidth);
+
+            TEST Pattern{PatternRef,1,i}.Formula.BoxOrient
+            CASE "H":
+                IF XPos+Box.CorrLength>XEnd XEnd:=XPos+Box.CorrLength;
+                IF YPos+Box.CorrWidth>YEnd YEnd:=YPos+Box.CorrWidth;
+            CASE "V":
+                IF XPos+Box.CorrWidth>XEnd XEnd:=XPos+Box.CorrWidth;
+                IF YPos+Box.CorrLength>YEnd YEnd:=YPos+Box.CorrLength;
+            ENDTEST
+
+            IF XPos<XStart XStart:=XPos;
+            IF YPos<YStart YStart:=YPos;
+
+            IF XPos<9E9 AND XPos<XOffset XOffset:=XPos;
+            IF YPos<9E9 AND YPos<YOffset YOffset:=YPos;
+        ENDFOR
+
+        RETURN [XEnd-XStart,YEnd-YStart,XOffset,YOffset];
+    ENDFUNC
+
+    PROC UpdateFPBoxStatus(num BoxStatus\num StartCycle\switch NewLayer\switch NoUIUpdate\switch NoWrite)
+
+        IF Present(NewLayer) THEN
+            TEST Palletize{TargetPallet}
+            CASE SYS_PALLETIZE:
+
+                ! Init layer status for a new layer when palletizing. Layer is empty at start.
+                TempLayerStatus:=[
+        2,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1
+    ];
+                IF Present(StartCycle) THEN
+                    FOR i FROM 1 TO StartCycle-1 DO
+                        IF i>=1 SetFPBoxStatus TempLayerStatus,Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},i}.Child,BOX_HANDLED\Cycle:=i;
+                    ENDFOR
+                ENDIF
+            CASE SYS_DEPALLETIZE:
+
+                ! Init layer status for a new layer when depalletizing. Layer is full at the start.
+                TempLayerStatus:=[
+        2,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1,
+        1,1,1,1,1,1,1,1,1,1
+    ];
+                IF Present(StartCycle) THEN
+                    FOR i FROM StartCycle+1 TO StackConfig{StartLayer{TargetPallet}}.NrOfBoxes DO
+                        IF i<=StackConfig{StartLayer{TargetPallet}}.NrOfBoxes SetFPBoxStatus TempLayerStatus,Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},i}.Child,BOX_HANDLED\Cycle:=i;
+                    ENDFOR
+                ENDIF
+            ENDTEST
+        ENDIF
+
+        ! Update the box status for the parent and child
+        IF NOT Present(NoWrite) SetFPBoxStatus TempLayerStatus,Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},CycleCnt{TargetPallet}}.Child,BoxStatus\Cycle:=CycleCnt{TargetPallet};
+
+        ! Update the UI
+        IF NOT Present(NoUIUpdate) CurrentBoxStatus:=TempLayerStatus;
+    ENDPROC
+
+    LOCAL PROC SetFPBoxStatus(INOUT num LayerStatus{*},childdata Childeren,num BoxStatus\num Cycle)
+        IF Present(Cycle) LayerStatus{Cycle}:=BoxStatus;
+        IF Childeren.Child1>0 LayerStatus{Childeren.Child1}:=BoxStatus;
+        IF Childeren.Child2>0 LayerStatus{Childeren.Child2}:=BoxStatus;
+        IF Childeren.Child3>0 LayerStatus{Childeren.Child3}:=BoxStatus;
+        IF Childeren.Child4>0 LayerStatus{Childeren.Child4}:=BoxStatus;
+        IF Childeren.Child5>0 LayerStatus{Childeren.Child5}:=BoxStatus;
+    ENDPROC
+
+    PROC InitRecipe()
+        VAR num NrOfCycles{3};
+        VAR num NrOfBoxes{3};
+        VAR num Parent;
+        VAR num l;
+        VAR num TryLink;
+        !
+        VAR string TempLayerFormula{60};
+        !
+        VAR num TempBoxParents{60};
+        !
+        VAR childdata Childeren;
+
+        ! Init
+        Slipsheet.SearchHeight:=-1;
+        UpdateProductDimensions;
+
+        ! Initialize the number of boxes and the number of cycles per layer for the current recipe. Boxes and cycles are only counted for one start corner.
+        FOR i FROM 1 TO Dim(Pattern,1) DO
+            FOR j FROM 1 TO Dim(Pattern,3) DO
+                IF Pattern{i,1,j}.Formula.Formula<>"" THEN
+                    Incr NrOfBoxes{i};
+                    IF Pattern{i,1,j}.Parent=-1 Incr NrOfCycles{i};
+                ENDIF
+            ENDFOR
+            FOR j FROM 1 TO Pallet.NrOfLayers DO
+                IF StackConfig{j}.Name=LayerName{i} AND StackConfig{j}.PatternRef=0 THEN
+                    StackConfig{j}.NrOfBoxes:=NrOfBoxes{i};
+                    StackConfig{j}.NrOfCycles:=NrOfCycles{i};
+                    StackConfig{j}.PatternRef:=i;
+                ENDIF
+            ENDFOR
+        ENDFOR
+
+        ! Set the child link and calculate the amount of boxes per cycle
+        FOR i FROM 1 TO Dim(Pattern,1) DO
+            IF Pattern{i,1,1}.Formula.Formula<>"" AND NrOfCycles{i}>0 THEN
+                FOR j FROM 1 TO Dim(Pattern,2) DO
+                    FOR k FROM 1 TO NrOfCycles{i} DO
+                        ! Init the child data
+                        Pattern{i,j,k}.BoxCnt:=1;
+                        Pattern{i,j,k}.Child:=[0,0,0,0,0];
+
+                        ! Check if the box has a parent. If so update the child link at the parent
+                        TryLink:=1;
+                        l:=NrOfCycles{i}+1;
+                        Parent:=Pattern{i,j,k}.ID;
+                        WHILE l<=NrOfBoxes{i} DO
+                            IF Parent=Pattern{i,j,l}.Parent THEN
+                                TEST Pattern{i,j,k}.BoxCnt
+                                CASE 1:
+                                    Pattern{i,j,k}.Child.Child1:=l;
+                                CASE 2:
+                                    Pattern{i,j,k}.Child.Child2:=l;
+                                CASE 3:
+                                    Pattern{i,j,k}.Child.Child3:=l;
+                                CASE 4:
+                                    Pattern{i,j,k}.Child.Child4:=l;
+                                CASE 5:
+                                    Pattern{i,j,k}.Child.Child5:=l;
+                                ENDTEST
+
+                                Parent:=Pattern{i,j,l}.ID;
+                                Incr Pattern{i,j,k}.BoxCnt;
+                                l:=NrOfCycles{i}+1;
+                                Incr TryLink;
+                                IF TryLink>5 THEN
+                                    ErrWrite "Pattern error","Unable to locate childeren for par: "+NumToStr(Parent,0);
+                                    Stop;
+                                    ExitCycle;
+                                ENDIF
+                            ELSE
+                                Incr l;
+                            ENDIF
+                        ENDWHILE
+                    ENDFOR
+                ENDFOR
+
+                IF StartCorner{i}=0 StartCorner{i}:=1;
+                InitLayer i;
+            ENDIF
+        ENDFOR
+
+        ! Calculate the total amount of boxes on the pallet for the recipe
+        BoxesTotal:=0;
+        FOR i FROM 1 TO Dim(StackConfig,1) DO
+            Add BoxesTotal,StackConfig{i}.NrOfBoxes;
+        ENDFOR
+
+        ! Initialisation of variables to get an initial view on the pendant. Will be overwritten when a pallet is released for production.
+        TargetPallet:=1;
+
+        ! Set the production ststus
+        ProductionStatus:=STATUS_PRODUCTION;
+    ENDPROC
+
+    LOCAL PROC InitFPLayerStatus()
+        VAR string TempLayerFormula{60};
+        !
+        VAR num TempBoxParents{60};
+
+        ! Initialize the pattern for the FP app
+        FOR i FROM 1 TO StackConfig{LayerCnt{TargetPallet}}.NrOfBoxes DO
+            TempLayerFormula{i}:=Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},i}.Formula.Formula;
+            SetFPBoxStatus TempBoxParents,Pattern{StackConfig{LayerCnt{TargetPallet}}.PatternRef,StartCorner{TargetPallet},i}.Child,i;
+        ENDFOR
+
+        CurrentLayerFormula:=TempLayerFormula;
+        CurrentBoxParents:=TempBoxParents;
+    ENDPROC
+
+    PROC CalcOffsets(\switch OptimizeTopLayer)
+        VAR num FeederAppr;
+        VAR num FeederDepart;
+        VAR num PalletAppr;
+        VAR num PalletDepart;
+        VAR num SlipsheetAppr;
+        VAR num SlipsheetDepart;
+        !
+        VAR robtarget pCurrent;
+
+        OptTopLayer:=Present(OptimizeTopLayer);
+
+        FeederAppr:=AbsFeederHeight+FEEDER_APPROACH_Z;
+        FeederApprOffset:=FEEDER_APPROACH_Z;
+
+        FeederDepart:=AbsFeederHeight+Box.CorrHeight+FEEDER_DEPART_Z;
+        FeederDepartOffset:=Box.CorrHeight+FEEDER_DEPART_Z;
+
+        IF CycleCnt{TargetPallet}=1 OR ((LayerCnt{TargetPallet}=Pallet.NrOfLayers AND (AbsPalletHeight{TargetPallet}-AbsFeederHeight)>500) AND OptTopLayer) THEN
+            PalletAppr:=AbsPalletHeight{TargetPallet}+PALLET_APPROACH_Z;
+
+            PalletApprOffset:=PALLET_APPROACH_Z;
+        ELSE
+
+            PalletAppr:=AbsPalletHeight{TargetPallet}+Box.CorrHeight+PALLET_APPROACH_Z;
+            ErrWrite\W, ValToStr(Box.CorrHeight) + " "+ValToStr(PALLET_APPROACH_Z),ValToStr(Box.CorrHeight) + " "+ValToStr(PALLET_APPROACH_Z);
+            PalletApprOffset:=Box.CorrHeight+PALLET_APPROACH_Z;
+        ENDIF
+
+        PalletDepart:=AbsPalletHeight{TargetPallet}+PALLET_DEPART_Z;
+        PalletDepartOffset:=PALLET_DEPART_Z;
+
+        SlipsheetAppr:=AbsSlipSheetHeight+SLIPSHEET_APPROACH_Z+Slipsheet.StackHeight;
+        SlipSheetApprOffset:=SLIPSHEET_APPROACH_Z+Slipsheet.StackHeight;
+
+        SlipsheetDepart:=AbsSlipSheetHeight+SLIPSHEET_DEPART_Z;
+        SlipSheetDepartOffset:=Slipsheet.Thickness+SLIPSHEET_DEPART_Z;
+
+        ! Calculate feeder approach offset based on the pallet height of the previous cycle
+        IF CurrentPalletZ=9E9 THEN
+            pCurrent:=CRobT(\WObj:=wobj0);
+            CurrentPalletZ:=pCurrent.trans.z;
+        ENDIF
+        IF CurrentPalletZ>FeederAppr Add FeederApprOffset,CurrentPalletZ-FeederAppr;
+
+        ! Set the pallet Z coordinate for the next cycle
+        CurrentPalletZ:=AbsPalletHeight{TargetPallet}+PALLET_DEPART_Z;
+
+        ! Calculate feeder depart offset
+        IF PalletAppr>FeederDepart AND ((LayerCnt{TargetPallet}<Pallet.NrOfLayers OR (AbsPalletHeight{TargetPallet}-AbsFeederHeight)<=500) OR (NOT OptTopLayer)) THEN
+            Add FeederDepartOffset,PalletAppr-FeederDepart;
+
+        ENDIF
+
+        ! Calculate pallet approach offset
+        IF FeederDepart>PalletAppr THEN 
+
+            ErrWrite\W, ValToStr(FeederDepart) + " "+ValToStr(PalletAppr),ValToStr(FeederDepart) + " "+ValToStr(PalletAppr);
+            !Add PalletApprOffset,FeederDepart-PalletAppr;
+        ENDIF
+
+        ! Calculate pallet depart offset
+        IF FeederAppr>PalletDepart Add PalletDepartOffset,FeederAppr-PalletDepart;
+
+        ! Calculate slipsheet approach and depart offset
+        IF FeederAppr>PalletDepart THEN
+            IF FeederAppr>SlipsheetAppr Add SlipSheetApprOffset,FeederAppr-SlipsheetAppr;
+            IF FeederDepart>SlipsheetDepart Add SlipSheetDepartOffset,FeederDepart-SlipsheetDepart;
+        ELSE
+            IF PalletDepart>SlipsheetAppr Add SlipSheetApprOffset,PalletDepart-SlipsheetAppr;
+            IF PalletDepart>SlipsheetDepart Add SlipSheetDepartOffset,PalletDepart-SlipsheetDepart;
+        ENDIF
+    ERROR
+        IF TargetPallet=0 ErrWrite Common_Header_1,PickPlaceItem_Txt_B1\RL2:=PickPlaceItem_Txt_B2\RL3:=PickPlaceItem_Txt_B3\RL4:=PickPlaceItem_Txt_B4+NumToStr(Dim(AbsPalletHeight,1),0)+PickPlaceItem_Txt_B5;
+    ENDPROC
+
+    TRAP TrpProductionStatus
+        TEST AppCommand
+        CASE CMD_STOP_END_CYCLE:
+            ProductionStatus:=STATUS_END_CYCLE;
+        CASE CMD_STOP_END_PALLET:
+            ProductionStatus:=STATUS_END_PALLET;
+        CASE CMD_STOP_CANCEL:
+            ProductionStatus:=STATUS_PRODUCTION;
+        ENDTEST
+        AppCommand:=CMD_NONE;
+    ENDTRAP
+ENDMODULE

@@ -1,0 +1,146 @@
+MODULE TXT_ENG(SYSMODULE)
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.001                                                              **
+    !** Date:    15-10-2024                                                            **
+    !**                                                                                **
+    !** Module:  TXT_ENG (Text messages in english)                                    **
+    !**                                                                                **
+    !************************************************************************************
+
+    ! Common header texts
+    !                             "                                        "
+    CONST string Common_Header_1:="Value error";
+    !
+    ! Error texts for module FileHandling
+    !                                 "                                        "
+    CONST string FileHandling_Txt_A1:="Error in recipe file";
+    CONST string FileHandling_Txt_A2:="Error in tune data file";
+    CONST string FileHandling_Txt_A3:="The value for the parameter: ";
+    CONST string FileHandling_Txt_A4:="is incorrect.";
+    !                                 "                                        "
+    CONST string FileHandling_Txt_B1:="Unknown identifier";
+    CONST string FileHandling_Txt_B2:="The identifier: ";
+    CONST string FileHandling_Txt_B3:=" is not recognized.";
+    CONST string FileHandling_Txt_B4:="Please correct or remove the identifier";
+    !                                 "                                        "
+    CONST string FileHandling_Txt_C1:="Recipe doesn't exist";
+    CONST string FileHandling_Txt_C2:="The recipe: ";
+    CONST string FileHandling_Txt_C3:=" doesn't exist.";
+    CONST string FileHandling_Txt_C4:="Please select a recipe";
+    !
+    ! Error texts for module Data
+    !                         "                                        "
+    CONST string Data_Txt_A1:="The pallet number parameter passed to";
+    CONST string Data_Txt_A2:="the InitPallet routine is invalid.";
+    CONST string Data_Txt_A3:="Please checck the program";
+    !
+    ! Error texts for module PatternCalc
+    !                                "                                        "
+    CONST string PatternCalc_Txt_A1:="The pallet number is invalid in the";
+    CONST string PatternCalc_Txt_A2:="routine SetPalletizeCycle. The pallet";
+    CONST string PatternCalc_Txt_A3:="number must be between 0 and ";
+    !                                "                                        "
+    CONST string PatternCalc_Txt_B1:="StartLayer must be between 1 and ";
+    !                                "                                        "
+    CONST string PatternCalc_Txt_C1:="StartCycle must be between 1 and ";
+    !                                "                                        "
+
+    CONST string PatternCalc_Txt_D3:="the workrange. The required position is";
+    CONST string PatternCalc_Txt_D4:="with: ";
+    CONST string PatternCalc_Txt_D5:=" mm too high.";
+    !
+    ! Error texts for module PickPlaceItem
+    !                                  "                                        "
+    CONST string PickPlaceItem_Txt_A1:="The value for the target pallet is";
+    CONST string PickPlaceItem_Txt_A2:="illegal. Check SetPalletCycle the for the";
+    CONST string PickPlaceItem_Txt_A3:="correct values. Values should be between";
+    CONST string PickPlaceItem_Txt_A4:="1 and ";
+    CONST string PickPlaceItem_Txt_A5:=".";
+    !                                  "                                        "
+    CONST string PickPlaceItem_Txt_B1:="The value for the next pallet is";
+    CONST string PickPlaceItem_Txt_B2:="illegal. Check SetPalletCycle the for the";
+    CONST string PickPlaceItem_Txt_B3:="correct values. Values should be between";
+    CONST string PickPlaceItem_Txt_B4:="1 and ";
+    CONST string PickPlaceItem_Txt_B5:=".";
+    !                                  "                                        "
+    CONST string PickPlaceItem_Txt_C1:="Argument warning";
+    CONST string PickPlaceItem_Txt_C2:="Optional argument LowApproach is not";
+    CONST string PickPlaceItem_Txt_C3:="for depalletizing. Remove this parameter";
+    CONST string PickPlaceItem_Txt_C4:="to remove this warning.";
+    !
+    ! Error texts for module Init
+    !                         "                                        "
+    CONST string Init_Txt_A1:="The value for the Palletize setting is";
+    CONST string Init_Txt_A2:="illegal. Values should be between";
+    CONST string Init_Txt_A3:="0 and 2 or set to the respective";
+    CONST string Init_Txt_A4:="constants";
+    !                         "                                        "
+    CONST string Init_Txt_B1:="The value for the AllowAppRelease";
+    CONST string Init_Txt_B2:="setting is illegal. Values should be";
+    CONST string Init_Txt_B3:="between 0 and 2 or set to the respective";
+    CONST string Init_Txt_B4:="constants";
+    !                         "                                        "
+    CONST string Init_Txt_C1:="The value for the CORNER_LOWER_LAYERS";
+    CONST string Init_Txt_C2:="The value for the CORNER_UPPER_LAYERS";
+    CONST string Init_Txt_C3:="setting is illegal. Values should be";
+    CONST string Init_Txt_C4:="between 1 and 4";
+    !                         "                                        "
+    CONST string Init_Txt_D1:="The value for the PickObjLocation";
+    CONST string Init_Txt_D2:="setting is illegal. Values should be";
+    CONST string Init_Txt_D3:="between 0 and 2 or set to the respective";
+    CONST string Init_Txt_D4:="constants";
+    !                         "                                        "
+    CONST string Init_Txt_E1:="The value for the GripperType";
+    CONST string Init_Txt_E2:="setting is illegal. Values should be";
+    CONST string Init_Txt_E3:="between 0 and 2 or set to the respective";
+    CONST string Init_Txt_E4:="constants";
+    !                         "                                        "
+    CONST string Init_Txt_F1:="MaxShortSideLead and MaxLongSideLead are";
+    CONST string Init_Txt_F2:="both defined. Only one feed direction is";
+    CONST string Init_Txt_F3:="supported.";
+    !                         "                                        "
+    CONST string Init_Txt_G1:="The value for the MaxLongSideLead";
+    CONST string Init_Txt_G2:="setting is illegal. Values should be";
+    CONST string Init_Txt_G3:="between 0 and 3";
+    !                         "                                        "
+    CONST string Init_Txt_H1:="The value for the MaxShortSideLead";
+    CONST string Init_Txt_H2:="setting is illegal. Values should be";
+    CONST string Init_Txt_H3:="between 0 and 3";
+    !                         "                                        "
+    CONST string Init_Txt_I1:="MaxShortSideLead and MaxLongSideLead are";
+    CONST string Init_Txt_I2:="both undefined. Configure at least one";
+    CONST string Init_Txt_I3:="feed direction.";
+    !                         "                                        "
+    CONST string Init_Txt_J1:="The value for the FEEDER_APPROACH_X";
+    CONST string Init_Txt_J2:="The value for the FEEDER_APPROACH_Y";
+    CONST string Init_Txt_J3:="The value for the FEEDER_APPROACH_Z";
+    CONST string Init_Txt_J4:="The value for the FEEDER_DEPART_X";
+    CONST string Init_Txt_J5:="The value for the FEEDER_DEPART_Y";
+    CONST string Init_Txt_J6:="The value for the FEEDER_DEPART_Z";
+    !
+    CONST string Init_Txt_J7:="The value for the PALLET_APPROACH_X";
+    CONST string Init_Txt_J8:="The value for the PALLET_APPROACH_Y";
+    CONST string Init_Txt_J9:="The value for the PALLET_APPROACH_Z";
+    CONST string Init_Txt_J10:="The value for the PALLET_DEPART_X";
+    CONST string Init_Txt_J11:="The value for the PALLET_DEPART_Y";
+    CONST string Init_Txt_J12:="The value for the PALLET_DEPART_Z";
+    CONST string Init_Txt_J13:="The value for the LOW_APPROACH_OFFS";
+    !
+    CONST string Init_Txt_J14:="The value for the SLIPSHEET_APPROACH_X";
+    CONST string Init_Txt_J15:="The value for the SLIPSHEET_APPROACH_Y";
+    CONST string Init_Txt_J16:="The value for the SLIPSHEET_APPROACH_Z";
+    CONST string Init_Txt_J17:="The value for the SLIPSHEET_DEPART_X";
+    CONST string Init_Txt_J18:="The value for the SLIPSHEET_DEPART_Y";
+    CONST string Init_Txt_J19:="The value for the SLIPSHEET_DEPART_Z";
+    !
+    CONST string Init_Txt_J20:="The value for the OPT_TOP_X_SAFE";
+    CONST string Init_Txt_J21:="The value for the OPT_TOP_Y_SAFE";
+    !
+    CONST string Init_Txt_J30:="setting is illegal. Values should be";
+    CONST string Init_Txt_J31:="between -2000 and 2000 mm";
+ENDMODULE

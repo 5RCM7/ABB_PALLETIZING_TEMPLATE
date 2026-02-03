@@ -1,0 +1,259 @@
+MODULE WorkrangeCheck
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.002                                                              **
+    !** Date:    03-03-2025                                                            **
+    !**                                                                                **
+    !** Module:  WorkrangeCheck                                                        **
+    !**                                                                                **
+    !************************************************************************************
+
+    RECORD workrangecheckdata
+        string message;
+        num errorcode;
+        num pallet;
+        num layer;
+        num box;
+    ENDRECORD
+
+    CONST num ERR_WR_PALLET:=1;
+    CONST num ERR_WR_PALLET_APPROACH:=2;
+    CONST num ERR_WR_PALLET_DEPART:=3;
+    CONST num ERR_WR_FEEDER:=4;
+    CONST num ERR_WR_FEEDER_APPROACH:=5;
+    CONST num ERR_WR_FEEDER_DEPART:=6;
+    CONST num ERR_WR_SLIPSHEET_MAG:=7;
+    CONST num ERR_WR_SLIPSHEET_MAG_APPROACH:=8;
+    CONST num ERR_WR_SLIPSHEET_MAG_DEPART:=9;
+    CONST num ERR_WR_SLIPSHEET_PAL:=10;
+    CONST num ERR_WR_SLIPSHEET_PAL_APPROACH:=11;
+    CONST num ERR_WR_SLIPSHEET_PAL_DEPART:=12;
+
+    PERS workrangecheckdata WorkRangeError{50}:=
+    [
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0],
+        ["",0,0,0,0]
+
+    ];
+
+    LOCAL VAR num WorkRangeErrCnt:=1;
+
+    PROC VerifyWorkrange()
+
+        WorkRangeErrCnt:=1;
+        FOR i FROM 1 TO Dim(WorkRangeError,1) DO
+            WorkRangeError{i}:=["",0,0,0,0];
+        ENDFOR
+
+        FOR i FROM 1 TO Dim(Palletize,1) DO
+
+            IF Palletize{i}<>SYS_NOT_USED THEN
+                PalletStatus{i}:=PALLET_NEW;
+
+                WHILE PalletStatus{i}<>PALLET_FULL DO
+
+                    ! Set the palletizing cycle.
+                    SetPalletizeCycle i,1;
+
+                    ! Pick - Place cycle
+                    CheckrangeFeeder i;
+                    CheckrangePallet i;
+
+                    ! Slipsheet cycle
+                    WHILE GetSlipsheet() DO
+                        CheckrangeSlipsheetPick;
+                        CheckrangeSlipsheetPlace;
+                    ENDWHILE
+                    
+                    !WaitTime 0.25;
+                    IF IsNewLayer(i) WaitTime 0.5;
+                ENDWHILE
+            ENDIF
+        ENDFOR
+
+        Stop;
+        ExitCycle;
+    ENDPROC
+
+    LOCAL PROC CheckrangeFeeder(num PalletNr)
+        VAR robtarget PickTarget;
+        VAR robtarget pTemp;
+
+        ! Get the feeder position
+        GetFeederItem PickTarget,tVacuum;
+
+        ! Check the feeder position
+        IF NOT CheckTarget(PickTarget,tVacuum\WObj:=obFeeder)
+            SetWorkRangeError "The feeder target is ureachable.",ERR_WR_FEEDER,0,LayerCnt{PalletNr},0;
+
+        ! Check the feeder approach position
+        IF NOT CheckTarget(GetFeederApproach(PickTarget),tVacuum\WObj:=obFeeder)
+            SetWorkRangeError "The feeder approach target is ureachable.",ERR_WR_FEEDER_APPROACH,0,LayerCnt{PalletNr},0;
+
+        ! Check the feeder depart targetr
+        IF NOT CheckTarget(GetFeederDepart(PickTarget),tVacuum\WObj:=obFeeder)
+            SetWorkRangeError "The feeder depart target is ureachable.",ERR_WR_FEEDER_DEPART,0,LayerCnt{PalletNr},0;
+    ENDPROC
+
+    LOCAL PROC CheckrangePallet(num PalletNr)
+        VAR robtarget PlaceTarget;
+        VAR robtarget pTemp;
+        !
+        VAR bool OK;
+
+        ! Get the pallet position
+        GetPalletItem PlaceTarget,tVacuum;
+
+        ! Check the pallet position
+        OK:=CheckTarget(PlaceTarget,tVacuum\WObj:=obPallet);
+        IF NOT OK SetWorkRangeError "The pallet target is ureachable.",ERR_WR_PALLET,PalletNr,LayerCnt{PalletNr},CycleCnt{PalletNr};
+
+
+        ! Check the pallet approach position
+        IF OK THEN
+            OK:=CheckTarget(GetPalletApproach(PlaceTarget),tVacuum\WObj:=obPallet);
+            IF NOT OK SetWorkRangeError "The pallet approach target is ureachable.",ERR_WR_PALLET_APPROACH,PalletNr,LayerCnt{PalletNr},CycleCnt{PalletNr};
+        ENDIF
+
+        ! Check the pallet depart targetr
+        IF OK THEN
+            OK:=CheckTarget(GetPalletDepart(PlaceTarget),tVacuum\WObj:=obPallet);
+            IF NOT OK SetWorkRangeError "The pallet depart target is ureachable.",ERR_WR_PALLET_DEPART,PalletNr,LayerCnt{PalletNr},CycleCnt{PalletNr};
+        ENDIF
+
+        ! Confirm the place cycle
+        PlaceCycleDone OK\RangeCheck;
+    ENDPROC
+
+    LOCAL PROC CheckrangeSlipsheetPick()
+        VAR robtarget SlipsheetPickTarget;
+        !
+        VAR num SearchApproachHeight;
+        VAR num SearchStartHeight;
+
+        ! Get the slipsheet pick position.
+        GetSlipsheetPickItem SlipsheetPickTarget,SearchApproachHeight,SearchStartHeight;
+
+        ! Check the slipsheet pick position
+        IF NOT CheckTarget(SlipsheetPickTarget,tSlipsheet\WObj:=obSheetMag)
+            SetWorkRangeError "The slipsheet feeder target is ureachable.",ERR_WR_SLIPSHEET_MAG,0,0,0;
+
+        ! Check the slipsheet pick approach position
+        IF NOT CheckTarget(GetSlipsheetApproach(SlipsheetPickTarget),tSlipsheet\WObj:=obSheetMag)
+            SetWorkRangeError "The slipsheet feeder approach target is ureachable.",ERR_WR_SLIPSHEET_MAG_APPROACH,0,0,0;
+
+        ! Check the slipsheet pick depart position
+        IF NOT CheckTarget(GetSlipsheetDepart(SlipsheetPickTarget),tSlipsheet\WObj:=obSheetMag)
+            SetWorkRangeError "The slipsheet feeder depart target is ureachable.",ERR_WR_SLIPSHEET_MAG_DEPART,0,0,0;
+    ENDPROC
+
+    LOCAL PROC CheckrangeSlipsheetPlace()
+        VAR robtarget SlipsheetPlaceTarget;
+
+        ! Get the slipsheet place position and workobject.
+        GetSlipsheetPlaceItem SlipsheetPlaceTarget;
+
+        ! Check the slipsheet place position
+        IF NOT CheckTarget(SlipsheetPlaceTarget,tSlipsheet\WObj:=obPallet)
+            SetWorkRangeError "The slipsheet pallet target is ureachable.",ERR_WR_SLIPSHEET_PAL,0,0,0;
+
+        ! Check the slipsheet place approach position
+        IF NOT CheckTarget(GetPalletApproach(SlipsheetPlaceTarget\Slipsheet),tSlipsheet\WObj:=obPallet)
+            SetWorkRangeError "The slipsheet pallet approach target is ureachable.",ERR_WR_SLIPSHEET_PAL_APPROACH,0,0,0;
+
+        ! Check the slipsheet place depart position
+        IF NOT CheckTarget(GetPalletDepart(SlipsheetPlaceTarget\Slipsheet),tSlipsheet\WObj:=obPallet)
+            SetWorkRangeError "The slipsheet pallet depart target is ureachable.",ERR_WR_SLIPSHEET_PAL_DEPART,0,0,0;
+
+        ! Confirm the place cycle
+        SlipsheetCycleDone TRUE;
+    ENDPROC
+
+    LOCAL FUNC bool CheckTarget(robtarget ToPoint,PERS tooldata Tool\PERS wobjdata WObj)
+        VAR jointtarget jtTemp;
+
+        jtTemp:=CalcJointT(ToPoint,Tool\WObj?WObj);
+        RETURN TRUE;
+    ERROR
+        SkipWarn;
+        RETURN FALSE;
+    ENDFUNC
+
+    LOCAL PROC SetWorkRangeError(string Message,num ErrCode,num Pallet,num Layer,num Box)
+        VAR string ErrMsg;
+
+        FOR i FROM 1 TO WorkRangeErrCnt DO
+            IF WorkRangeError{i}.errorcode=ErrCode AND WorkRangeError{i}.pallet=Pallet AND WorkRangeError{i}.layer=Layer AND WorkRangeError{i}.box=Box RETURN ;
+        ENDFOR
+
+        WorkRangeError{WorkRangeErrCnt}.errorcode:=ErrCode;
+        WorkRangeError{WorkRangeErrCnt}.pallet:=Pallet;
+        WorkRangeError{WorkRangeErrCnt}.layer:=Layer;
+        WorkRangeError{WorkRangeErrCnt}.box:=Box;
+        WorkRangeError{WorkRangeErrCnt}.message:=Message;
+
+        Incr WorkRangeErrCnt;
+
+        ErrMsg:=Message;
+        IF Pallet>0 Message:=Message+" Pallet: "+NumToStr(Pallet,0);
+        IF Layer>0 Message:=Message+" Layer: "+NumToStr(Layer,0);
+        IF Box>0 Message:=Message+" Box: "+NumToStr(Box,0);
+        ErrWrite\W,"Palletizing Template target not reachable",Message;
+    ENDPROC
+ENDMODULE

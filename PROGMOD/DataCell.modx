@@ -1,0 +1,4 @@
+MODULE DataCell
+    PERS tooldata MonOutil:=[TRUE,[[0,0,103.44],[1,0,0,0]],[1,[0,0,1],[1,0,0,0],0,0,0]];
+    PERS tooldata MonOutil111:=[TRUE,[[0,0,160.2],[1,0,0,0]],[1,[0,0,1],[1,0,0,0],0,0,0]];
+ENDMODULE

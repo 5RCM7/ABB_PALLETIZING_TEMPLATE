@@ -1,0 +1,267 @@
+MODULE Settings
+    !************************************************************************************
+    !**                                                                                **
+    !**                                  A B B                                         **
+    !**                                                                                **
+    !**                  P A L L E T I Z I N G   T E M P L A T E                       **
+    !**                                                                                **
+    !** Version: 2024.003                                                              **
+    !** Date:    07-05-2025                                                            **
+    !**                                                                                **
+    !** Module:  Settings                                                              **
+    !**                                                                                **
+    !************************************************************************************
+
+    ! **** DO NOT CHNAGE THE NAME OF ANY OF THESE VARIABLES ****
+
+    !*******************************************************************************************
+    ! Settings for feeder approach and depart offsets.
+    !*******************************************************************************************
+    !
+    CONST num FEEDER_APPROACH_X:=0;
+    CONST num FEEDER_APPROACH_Y:=0;
+    CONST num FEEDER_APPROACH_Z:=150;
+    !
+    CONST num FEEDER_DEPART_X:=0;
+    CONST num FEEDER_DEPART_Y:=0;
+    CONST num FEEDER_DEPART_Z:=150;
+
+    !*******************************************************************************************
+    ! Settings for pallet approach and depart offsets.
+    !*******************************************************************************************
+    !
+    CONST num PALLET_APPROACH_X:=50;
+    CONST num PALLET_APPROACH_Y:=50;
+    CONST num PALLET_APPROACH_Z:=150;
+    !
+    CONST num PALLET_DEPART_X:=0;
+    CONST num PALLET_DEPART_Y:=0;
+    CONST num PALLET_DEPART_Z:=150;
+    !
+    CONST num LOW_APPROACH_OFFS:=50;
+
+    !*******************************************************************************************
+    ! Settings for slipsheet approach and depart offsets.
+    !*******************************************************************************************
+    !
+    CONST num SLIPSHEET_APPROACH_X:=-200;
+    CONST num SLIPSHEET_APPROACH_Y:=-200;
+    CONST num SLIPSHEET_APPROACH_Z:=100;
+    !
+    CONST num SLIPSHEET_DEPART_X:=-200;
+    CONST num SLIPSHEET_DEPART_Y:=-200;
+    CONST num SLIPSHEET_DEPART_Z:=150;
+
+    !*******************************************************************************************
+    ! Applicable safe approach distances when low approach for the entire top layer is used.
+    !*******************************************************************************************
+    !
+    CONST num OPT_TOP_X_SAFE{4}:=[300,300,300,300];
+    CONST num OPT_TOP_Y_SAFE{4}:=[0,0,0,0];
+
+    !*******************************************************************************************
+    ! workobject definitions.
+    !*******************************************************************************************
+    !
+    ! Pick workobject (feeder).
+    TASK PERS wobjdata obFeeder1:=[FALSE,TRUE,"",[[957.5,1074.004,700],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata obFeeder2:=[FALSE,TRUE,"",[[980,40,-200],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    !
+    ! Place workobject (pallet).
+    TASK PERS wobjdata obPallet1:=[FALSE,TRUE,"",[[-600,350,-1000],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata obPallet2:=[FALSE,TRUE,"",[[-600,-1150,-1000],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata obPallet3:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    TASK PERS wobjdata obPallet4:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[0,0,0],[1,0,0,0]]];
+    !
+    ! Slipsheet pick workobject.
+    TASK PERS wobjdata obSheetMag1:=[FALSE,TRUE,"",[[900,-50,-300],[0.70710681,-0.000000015,0.000000085,-0.707106752]],[[0,0,0],[1,0,0,0]]];
+
+    !*******************************************************************************************
+    ! tooldata definitions.
+    !*******************************************************************************************
+    !
+    TASK PERS tooldata tSlipsheet:=[TRUE,[[0,0,103.44],[1,0,0,0]],[1,[0,0,1],[1,0,0,0],0,0,0]];
+
+    !*******************************************************************************************
+    ! Settings for the start corner.
+    !*******************************************************************************************
+    !
+    ! The start corner is the corner from where the layer build is started. The layer is build
+    ! towards the opposite corner of the start corner.
+    ! For optimization purposes a different start corner can be chosen for layers located
+    ! below feeder level (CORNER_LOWER_LAYERS) and above feeder level (CORNER_UPPER_LAYERS).
+    !
+    ! Start corner 1 is located at the same corner where the pallet workobject origin is defined.
+    ! Corner 2, 3 and 4 are located counter clockwise from corner 1.
+    !
+    !    ------------------------
+    !    | 3                  2 |
+    !    |                      |
+    !    |                      |
+    !    |                      |
+    !    |                      |
+    !    |        Pallet        |
+    !    |                      |
+    !    |                      | X
+    !    |                      | ^
+    !    |                      | |
+    !    | 4           Corner 1 | |
+    !    ------------------------ |
+    !                   Y <-------o Origin obPalletX
+    !
+    CONST num CORNER_LOWER_LAYERS{4}:=[1,1,1,1];
+    CONST num CORNER_UPPER_LAYERS{4}:=[1,1,1,1];
+
+    !*******************************************************************************************
+    ! Settings for palletize cycle.
+    !*******************************************************************************************
+    !
+    CONST num SYS_NOT_USED:=0;
+    CONST num SYS_PALLETIZE:=1;
+    CONST num SYS_DEPALLETIZE:=2;
+    !
+    CONST num Palletize{4}:=[SYS_PALLETIZE,SYS_PALLETIZE,SYS_NOT_USED,SYS_NOT_USED];
+
+    !*******************************************************************************************
+    ! Palletizing template pallet related parameters
+    !*******************************************************************************************
+    !
+    ! Specify the functionality of the status buttons in the production window.
+    ! 0 = No status button is shown. New pallet must be reported externally.
+    ! 1 = Status button is shown. New pallet must be reported externally.
+    ! 2 = Status button is shown. New pallet is reported from the FlexPendant app.
+    !
+    CONST num APP_NO_BUTTON:=0;
+    CONST num APP_STATUS_ONLY:=1;
+    CONST num APP_SINGLE_CONFIRM:=2;
+    !
+    CONST num AllowAppRelease{4}:=[APP_SINGLE_CONFIRM,APP_SINGLE_CONFIRM,APP_NO_BUTTON,APP_NO_BUTTON];
+
+    !*******************************************************************************************
+    ! Palletizing template conveyor related parameters.
+    !*******************************************************************************************
+    !
+    ! Pick workobject location. The X axis of the feeder workobject runs parallel, but opposite,
+    ! to the infeed direction.
+    !
+    !    |                         |
+    !    |        Infeed dir       |
+    !    |                         |
+    !    |            |            |
+    !    |            |            |
+    !    |           \ /           |
+    !    |                         |
+    !    |    -----------------    |
+    !    |    |               |    |
+    !    |    |      BOX      |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    ---------------------------
+    !        +X      +X      +X
+    !         ^       ^       ^
+    !         |       |       |
+    !         |       |       |
+    !         |       |       |
+    ! +Y <----o <-----o <-----o
+    !         3       2       1
+    !
+    ! Origin 1: The origin of the Pick workobject is on the right hand side of the box (PICK_OBJ_RIGHTSIDE)
+    ! Origin 2: The origin of the Pick workobject is in the center of the box (PICK_OBJ_CENTER)
+    ! Origin 3: The origin of the Pick workobject is on the left hand side of the box (PICK_OBJ_LEFTSIDE)
+    !
+    CONST num PICK_OBJ_RIGHTSIDE:=1;
+    CONST num PICK_OBJ_CENTER:=2;
+    CONST num PICK_OBJ_LEFTSIDE:=3;
+    !
+    CONST num PickObjLocation:=PICK_OBJ_RIGHTSIDE;
+
+    !*******************************************************************************************
+    ! Palletizing template gripper related parameters. 2 types of vacuum grippers are supported.
+    !*******************************************************************************************
+    !
+    ! Specify the type of gripper used in the system:
+    !   1  = Vacuum type gripper with the TCP at the center of the gripper (GRP_VACUUM_CENTER).
+    !   2  = Vacuum type gripper with the TCP at the outside of the gripper (GRP_VACUUM_CORNER).
+    !   3  = Mechanical gripper with mechanics at TCP side with the TCP at the bottom center of the gripper
+    !   4  = Mechanical gripper with mechanics at TCP side with the TCP at the bottom outside of the gripper
+    !   5  = Mechanical gripper with mechanics at opposite side of TCP with the TCP at the bottom center of the gripper
+    !   6  = Mechanical gripper with mechanics at opposite side of TCP with the TCP at the bottom outside of the gripper
+    !   7  = Mechanical gripper with mechanics at TCP side with the TCP at the top center of the gripper
+    !   8  = Mechanical gripper with mechanics at TCP side with the TCP at the top outside of the gripper
+    !   9  = Mechanical gripper with mechanics at opposite side of TCP with the TCP at the top center of the gripper
+    !   10 = Mechanical gripper with mechanics at opposite side of TCP with the TCP at the top outside of the gripper
+    !
+    CONST num GRP_NONE:=0;
+    CONST num GRP_VACUUM_CENTER:=1;
+    CONST num GRP_VACUUM_CORNER:=2;
+    CONST num GRP_MECH_TCP_SIDE_CENTER_BOT:=3;
+    CONST num GRP_MECH_TCP_SIDE_CORNER_BOT:=4;
+    CONST num GRP_MECH_OPP_SIDE_CENTER_BOT:=5;
+    CONST num GRP_MECH_OPP_SIDE_CORNER_BOT:=6;
+    CONST num GRP_MECH_TCP_SIDE_CENTER_TOP:=7;
+    CONST num GRP_MECH_TCP_SIDE_CORNER_TOP:=8;
+    CONST num GRP_MECH_OPP_SIDE_CENTER_TOP:=9;
+    CONST num GRP_MECH_OPP_SIDE_CORNER_TOP:=10;
+    CONST num GRP_MECH_CENTER_TOP:=11;
+    !
+    CONST num GripperType:=GRP_VACUUM_CENTER;
+    !
+    ! Specify the width in mm of the fixed plate for a mechanical gripper
+    CONST num GripperWidth:=0;
+    !
+    ! Specify the available gripper positions for the pick. For each of the 8 possible pick positions
+    ! the availablity must be set. This configuration is only applicable for mechanical grippers. For vacuum
+    ! type gripper no configuration should be made.
+    !
+    !   0 - Not available
+    !   1 - Available
+    !
+    !
+    !    |                         |
+    !    |        Infeed dir       |
+    !    |                         |
+    !    |            |            |
+    !    |            |            |
+    !    |           \ /           |
+    !    |     4             3     |
+    !    |    -----------------    |
+    !    |  5 |               | 2  |
+    !    |    |      BOX      |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |    |               |    |
+    !    |  6 |               | 1  |
+    !    ---------------------------
+    !          7             8
+    !
+    CONST num AvailablePickPos{8}:=[0,0,0,0,0,0,0,0];
+
+    !*******************************************************************************************
+    ! Feed direction for the boxes on the feeder and the handling capacity (multi box handling).
+    !*******************************************************************************************
+    !
+    ! Specify the max amount of boxes that can be picked at the same time. Boxes can be picked with
+    ! either the long side (long side lead) or with the short side (short side lead) against each other.
+    !
+    !  -------------------
+    !  |     |     |     |
+    !  |  1  |  2  |  3  |
+    !  |     |     |     |
+    !  -------------------
+    CONST num MaxLongSideLead:=0;
+    !
+    !  ---------------------------------
+    !  |    1    |    2     |    3     |
+    !  ---------------------------------
+    CONST num MaxShortSideLead:=2;
+
+
+ENDMODULE

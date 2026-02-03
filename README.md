@@ -47,6 +47,7 @@ Accédez au dossier **`Interface_flexpendant`**. Vous y trouverez deux versions 
 3.  Copiez ce dossier **`Palletizing`** final.
 4.  Collez-le dans le répertoire **`HOME/WebApps`** du contrôleur robot.
     *   *Chemin final attendu sur le robot* : `HOME/WebApps/Palletizing/`
+    *   **Note** : Si le dossier `WebApps` n'existe pas dans `HOME`, créez-le manuellement.
 
 **Option B : Installation pour 2 Palettes (Standard)**
 1.  Ouvrez le dossier **`Interface_flexpendant/WebApp_2_Pallets`**.
@@ -145,6 +146,7 @@ Navigate to the **`Interface_flexpendant`** folder. You will find two versions:
 3.  Copy this final **`Palletizing`** folder.
 4.  Paste it into the **`HOME/WebApps`** directory of the robot controller.
     *   *Expected final path on the robot*: `HOME/WebApps/Palletizing/`
+    *   **Note**: If the `WebApps` folder does not exist in `HOME`, create it manually.
 
 **Option B: Installation for 2 Pallets (Standard)**
 1.  Open the folder **`Interface_flexpendant/WebApp_2_Pallets`**.
